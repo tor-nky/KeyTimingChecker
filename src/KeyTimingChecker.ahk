@@ -47,14 +47,14 @@ InBufRead := 0	; 読み出し位置
 InBufWrite := 0	; 書き込み位置
 InBufRest := 15
 
-SCArray := ["Esc", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "{sc0D}", "BackSpace", "Tab"
-	, "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "{sc1A}", "{sc1B}", "", "Ctrl", "A", "S"
-	, "D", "F", "G", "H", "J", "K", "L", "{sc27}", "{sc28}", "{sc29}", "LShift", "{sc2B}", "Z", "X", "C", "V"
-	, "B", "N", "M", ",", ".", "/", "", "", "", "Space", "CapsLock", "F1", "F2", "F3", "F4", "F5"
-	, "F6", "F7", "F8", "F9", "F10", "Pause", "ScrollLock", "", "", "", "", "", "", "", "", ""
-	, "", "", "", "", "SysRq", "", "KC_NUBS", "F11", "F12", "(Mac)=", "", "", "(NEC),", "", "", ""
-	, "", "", "", "", "F13", "F14", "F15", "F16", "F17", "F18", "F19", "F20", "F21", "F22", "F23", ""
-	, "(JIS)ひらがな", "(Mac)英数", "(Mac)かな", "(JIS)＼", "", "", "F24", "KC_LANG4"
+SCArray := ["", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "{sc0D}", "", ""
+	, "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "{sc1A}", "{sc1B}", "", "", "A", "S"
+	, "D", "F", "G", "H", "J", "K", "L", "{sc27}", "{sc28}", "{sc29}", "", "{sc2B}", "Z", "X", "C", "V"
+	, "B", "N", "M", ",", ".", "/", "", "", "", "Space", "CapsLock", "", "", "", "", ""
+	, "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""
+	, "", "", "", "", "SysRq", "", "KC_NUBS", "", "", "(Mac)=", "", "", "(NEC),", "", "", ""
+	, "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""
+	, "(JIS)ひらがな", "(Mac)英数", "(Mac)かな", "(JIS)_", "", "", "", "KC_LANG4"
 	, "KC_LANG3", "(JIS)変換", "", "(JIS)無変換", "", "(JIS)￥", "(Mac),", ""]
 
 ; キーボードドライバを調べて KeyDriver に格納する
@@ -85,9 +85,9 @@ WinAPI_timeBeginPeriod(1)
 
 
 Run, Notepad.exe, , , pid	; メモ帳を起動
-Sleep, 100
+Sleep, 200
 WinActivate, ahk_pid %pid%	；アクティブ化
-Send, キー入力の時間差を計測します。10秒間、何もキーを押さなければ終了します。`n
+Send, キー入力の時間差を計測します。10秒間、何もキーを押さなければ終了します。
 SetTimer, Timeout, 10000	; 10 秒間、何もキーを押さなければ終了
 
 ; ----------------------------------------------------------------------
@@ -107,7 +107,7 @@ exit	; 起動時はここまで実行
 
 Timeout:	; 一定時間、キーを押さなければ終了
 	IfWinActive, ahk_pid %pid%
-		Send, 終了.	; 起動したメモ帳がアクティブだったら出力
+		Send, `n終了.	; 起動したメモ帳がアクティブだったら出力
 	ExitApp
 
 ; ----------------------------------------------------------------------
@@ -119,9 +119,10 @@ Convert()
 	global SCArray, KeyDriver, pid
 		, InBuf, InBufRead, InBufTime, InBufRest
 	static run := 0	; 多重起動防止フラグ
-		, LastKeyTime := 0
+		, LastKeyTime := WinAPI_timeGetTime()
+		, LastTerm := " "
 ;	local Str, Start, Term
-;		, diff, number
+;		, diff, number, temp
 
 	SetTimer, Timeout, 10000	; タイマー更新
 
@@ -137,30 +138,39 @@ Convert()
 		; 入力バッファから読み出し
 		Str := InBuf[InBufRead], KeyTime := InBufTime[InBufRead++], InBufRead &= 15, InBufRest++
 
-		; 前回の入力からの時間を書き出し
-		diff := KeyTime - LastKeyTime
-		if diff < 10000
-			Send, % "<" . diff . "ms> "
-
-		; 入力文字の書き出し
-		StringRight, Term, Str, 2	; Term に入力末尾の2文字を入れる
-		if (Term == "up")	; キーが離されたとき
+		; キーの上げ下げを調べる
+		StringRight, Term, Str, 3	; Term に入力末尾の2文字を入れる
+		if (Term = " up")	; キーが離されたとき
 		{
-			Term := "↑ "
+			Term := "↑"
 			Str := SubStr(Str, 1, StrLen(Str) - 3)
+			if (Term != LastTerm)
+				Send, `n`t`t	; 上げ下げが変わったら改行、空白
+			else
+				Send, {Space}
 		}
 		else
-			Term := " "
-
-		if (Str == "sc29" && KeyDriver != "kbd101.dll")
+		{
+			Term := ""
+			if (Term != LastTerm)
+				Send, `n	; 上げ下げが変わったら改行
+			else
+				Send, {Space}
+		}
+		; 前回の入力からの時間を書き出し
+		diff := KeyTime - LastKeyTime
+		if diff >= 0
+			Send, % "(" . diff . "ms) "
+		; 入力文字の書き出し
+		if (Str = "sc29" && KeyDriver != "kbd101.dll")
 			Str := "半角/全角"
-		else if (Str == "sc3A" && KeyDriver != "kbd101.dll")
+		else if (Str = "sc3A" && KeyDriver != "kbd101.dll")
 			Str := "英数"
-		else if (Str == "LWin")		; LWin を半角のまま出力すると、なぜか Win+L が発動する
+		else if (Str = "LWin")		; LWin を半角のまま出力すると、なぜか Win+L が発動する
 			Str := "ＬWin"
-		else if (Str == "vk1A")
+		else if (Str = "vk1A")
 			Str := "(Mac)英数"
-		else if (Str == "vk16")
+		else if (Str = "vk16")
 			Str := "(Mac)かな"
 		else
 		{
@@ -168,13 +178,16 @@ Convert()
 			if (Start = "sc")
 			{
 				number := "0x" . SubStr(Str, 3, 2)
-				Str := SCArray[number & 0x7F]
+				temp := SCArray[number]
+				if (temp != "")
+					Str := temp
 			}
 		}
 
 		Send, % Str . Term
 
-		LastKeyTime := KeyTime		; 押した時間を保存
+		LastKeyTime := KeyTime	; 押した時間を保存
+		LastTerm := Term		; キーの上げ下げを保存
 	}
 
 	return
@@ -201,7 +214,7 @@ sc0A::	; 9
 sc0B::	; 0
 sc0C::	; -
 sc0D::	; (JIS)^	(US)=
-sc7D::	; (JIS)\
+sc7D::	; (JIS)￥
 sc10::	; Q
 sc11::	; W
 sc12::	; E
@@ -214,6 +227,7 @@ sc18::	; O
 sc19::	; P
 sc1A::	; (JIS)@	(US)[
 sc1B::	; (JIS)[	(US)]
+sc56::	; KC_NUBS
 sc1E::	; A
 sc1F::	; S
 sc20::	; D
@@ -239,100 +253,100 @@ sc35::	; /
 sc73::	; (JIS)_
 sc39::	; Space
 
-Esc::			; または sc01::
-BackSpace::		; または sc0E::
-Tab::			; または sc0F::
+Tab::			; sc0F::	vk09::
 Enter::
-NumpadEnter::
-LCtrl::			; vkA2::
-RCtrl::			; vkA3::
-LShift::		; または sc2A::
-RShift::		; vkA1::
-PrintScreen::	; vk2C::
-NumpadMult::	; vk6A::
-NumpadDiv::		; vk6F::
-LAlt::			; vkA4::
-RAlt::			; vkA5::
-sc3A::	; (JIS)英数	(US)CapsLock
-F1::			; または sc3B::
-F2::			; または sc3C::
-F3::			; または sc3D::
-F4::			; または sc3E::
-F5::			; または sc3F::
-F6::			; または sc40::
-F7::			; または sc41::
-F8::			; または sc42::
-F9::			; または sc43::
-F10::			; または sc44::
-Pause::			; または sc45::
-NumLock::		; vk90::
-sc46::	; ScrollLock
-Home::
-NumpadHome::
-Numpad7::		; vk67::
-Up::
-NumpadUp::
-Numpad8::		; vk68::
-PgUp::
-NumpadPgUp::
-Numpad9::		; vk69::
-NumpadSub::		; vk6D::
-Left::
-NumpadLeft::
-Numpad4::		; vk64::
-NumpadClear::
-Numpad5::		; vk65::
-Right::
-NumpadRight::
-Numpad6::		; vk66::
-NumpadAdd::		; vk6B::
-End::
-NumpadEnd::
-Numpad1::		; vk61::
-Down::
-NumpadDown::
-Numpad2:		; vk62::
-PgDn::
-NumpadPgDn::
-Numpad3::		; vk63::
+BackSpace::		; sc0E::	vk08::
+Delete::
 Insert::
-NumpadIns::
-Numpad0::		; vk60::
-Del::
-NumpadDel::
-NumpadDot::		; vk6E::
-sc54::	; SysRq
-sc56::	; non_us_backslash
-F11::			; または sc57::
-F12::			; または sc58::
-sc59::	; (Mac)=
-LWin::			; または vk5B::
-RWin::			; または vk5C::
-sc5C::	; (NEC),
-AppsKey::
-F13::			; または sc64::
-F14::			; または sc65::
-F15::			; または sc66::
-F16::			; または sc67::
-F17::			; または sc68::
-F18::			; または sc69::
-F19::			; または sc6A::
-F20::			; または sc6B::
-F21::			; または sc6C::
-F22:: 			; または sc6D::
-F23::			; または sc6E::
-sc70::	; (JIS)ひらがな
-F24::			; または sc76::
-sc77::	; lang4
-sc78::	; lang3
+Left::
+Right::
+Up::
+Down::
+Home::
+End::
+PgUp::
+PgDn::
 sc79::	; (JIS)変換
 sc7B::	; (JIS)無変換
-sc7E::	; (Mac),
+sc70::	; (JIS)ひらがな
+sc78::	; KC_LANG3
+sc77::	; KC_LANG4
 vk1A::	; (Mac)英数 downのみ
 vk16::	; (Mac)かな downのみ
-;Break::	; 不可
-;Sleep::	; 不可
-;Help::	; 不可
+F1::			; sc3B::	vk70::
+F2::			; sc3C::	vk71::
+F3::			; sc3D::	vk72::
+F4::			; sc3E::	vk73::
+F5::			; sc3F::	vk74::
+F6::			; sc40::	vk75::
+F7::			; sc41::	vk76::
+F8::			; sc42::	vk77::
+F9::			; sc43::	vk78::
+F10::			; sc44::	vk79::
+F11::			; sc57::	vk7A::
+F12::			; sc58::	vk7B::
+F13::			; sc64::	vk7C::
+F14::			; sc65::	vk7D::
+F15::			; sc66::	vk7E::
+F16::			; sc67::	vk7F::
+F17::			; sc68::	vk80::
+F18::			; sc69::	vk81::
+F19::			; sc6A::	vk82::
+F20::			; sc6B::	vk83::
+F21::			; sc6C::	vk84::
+F22::			; sc6D::	vk85::
+F23::			; sc6E::	vk86::
+F24::			; sc76::	vk87::
+Esc::			; sc01::	vk1B::
+AppsKey::		; vk5D::
+PrintScreen::	; vk2C::
+sc54::	; SysRq
+Pause::			; sc45::	vk13::
+;Break::		; 認識しない
+;Sleep::		; 認識しない
+;Help::			; 認識しない
+CtrlBreak::
+sc3A::	; (JIS)英数	(US)CapsLock
+ScrollLock::	; sc46::
+NumLock::		; vk90::
+LCtrl::			; vkA2::
+RCtrl::			; vkA3::
+LAlt::			; vkA4::
+RAlt::			; vkA5::
+LShift::		; sc2A::	vkA0::
+RShift::		; vkA1::
+LWin::			; vk5B::
+RWin::			; vk5C::
+Numpad0::		; vk60::
+Numpad1::		; vk61::
+Numpad2::		; vk62::
+Numpad3::		; vk63::
+Numpad4::		; vk64::
+Numpad5::		; vk65::
+Numpad6::		; vk66::
+Numpad7::		; vk67::
+Numpad8::		; vk68::
+Numpad9::		; vk69::
+NumpadDot::		; vk6E::
+NumpadDel::		; vk2E::
+NumpadIns::		; vk2D::
+NumpadClear::	; vk0C::
+NumpadUp::		; vk26::
+NumpadDown::	; vk28::
+NumpadLeft::	; vk25::
+NumpadRight::	; vk27::
+NumpadHome::	; vk24::
+NumpadEnd::		; vk23::
+NumpadPgUp::	; vk21::
+NumpadPgDn::	; vk22::
+NumpadDiv::		; vk6F::
+NumpadMult::	; vk6A::
+NumpadAdd::		; vk6B::
+NumpadSub::		; vk6D::
+NumpadEnter::
+sc59::	; (Mac)=
+sc7E::	; (Mac),
+sc5C::	; (NEC),
 Browser_Back::		; vkA6::
 Browser_Forward::	; vkA7::
 Browser_Refresh::	; vkA8::
@@ -373,7 +387,7 @@ sc0A up::	; 9
 sc0B up::	; 0
 sc0C up::	; -
 sc0D up::	; (JIS)^	(US)=
-sc7D up::	; (JIS)\
+sc7D up::	; (JIS)￥
 sc10 up::	; Q
 sc11 up::	; W
 sc12 up::	; E
@@ -386,6 +400,7 @@ sc18 up::	; O
 sc19 up::	; P
 sc1A up::	; (JIS)@	(US)[
 sc1B up::	; (JIS)[	(US)]
+sc56 up::	; KC_NUBS
 sc1E up::	; A
 sc1F up::	; S
 sc20 up::	; D
@@ -395,7 +410,7 @@ sc23 up::	; H
 sc24 up::	; J
 sc25 up::	; K
 sc26 up::	; L
-sc27 up::	; ;
+sc27 up::	; `;
 sc28 up::	; (JIS):	(US)'
 sc2B up::	; (JIS)]	(US)＼
 sc2C up::	; Z
@@ -405,106 +420,106 @@ sc2F up::	; V
 sc30 up::	; B
 sc31 up::	; N
 sc32 up::	; M
-sc33 up::	; ,
+sc33 up::	; `,
 sc34 up::	; .
 sc35 up::	; /
 sc73 up::	; (JIS)_
 sc39 up::	; Space
 
-Esc up::			; または sc01 up::
-BackSpace up::		; または sc0E up::
-Tab up::			; または sc0F up::
+Tab up::			; sc0F up::	vk09 up::
 Enter up::
-NumpadEnter up::
-LCtrl up::			; vkA2 up::
-RCtrl up::			; vkA3 up::
-LShift up::			; または sc2A up::
-RShift up::			; vkA1 up::
-PrintScreen up::	; vk2C up::
-NumpadMult up::		; vk6A up::
-NumpadDiv up::		; vk6F up::
-LAlt up::			; vkA4 up::
-RAlt up::			; vkA5 up::
-sc3A up::	; (JIS)英数	(US)CapsLock
-F1 up::				; または sc3B up::
-F2 up::				; または sc3C up::
-F3 up::				; または sc3D up::
-F4 up::				; または sc3E up::
-F5 up::				; または sc3F up::
-F6 up::				; または sc40 up::
-F7 up::				; または sc41 up::
-F8 up::				; または sc42 up::
-F9 up::				; または sc43 up::
-F10 up::			; または sc44 up::
-Pause up::			; または sc45 up::
-NumLock up::		; vk90 up::
-sc46 up::	; ScrollLock
-Home up::
-NumpadHome up::
-Numpad7 up::		; vk67 up::
-Up up::
-NumpadUp up::
-Numpad8 up::		; vk68 up::
-PgUp up::
-NumpadPgUp up::
-Numpad9 up::		; vk69 up::
-NumpadSub up::		; vk6D up::
-Left up::
-NumpadLeft up::
-Numpad4 up::		; vk64 up::
-NumpadClear up::
-Numpad5 up::		; vk65 up::
-Right up::
-NumpadRight up::
-Numpad6 up::		; vk66 up::
-NumpadAdd up::		; vk6B up::
-End up::
-NumpadEnd up::
-Numpad1 up::		; vk61 up::
-Down up::
-NumpadDown up::
-Numpad2 up::		; vk62 up::
-PgDn up::
-NumpadPgDn up::
-Numpad3 up::		; vk63 up::
+BackSpace up::		; sc0E up::	vk08 up::
+Delete up::
 Insert up::
-NumpadIns up::
-Numpad0 up::		; vk60 up::
-Del up::
-NumpadDel up::
-NumpadDot up::		; vk6E up::
-sc54 up::	; SysRq
-sc56 up::	; non_us_backslash
-F11 up::			; または sc57 up::
-F12 up::			; または sc58 up::
-sc59 up::	; (Mac)=
-LWin up::			; vk5B up::
-RWin up::			; vk5C up::
-sc5C up::	; (NEC),
-AppsKey up::
-F13 up::			; または sc64 up::
-F14 up::			; または sc65 up::
-F15 up::			; または sc66 up::
-F16 up::			; または sc67 up::
-F17 up::			; または sc68 up::
-F18 up::			; または sc69 up::
-F19 up::			; または sc6A up::
-F20 up::			; または sc6B up::
-F21 up::			; または sc6C up::
-F22 up:: 			; または sc6D up::
-F23 up::			; または sc6E up::
-sc70 up::	; (JIS)ひらがな
-sc71 up::	; (Mac)英数 upのみ
-sc72 up::	; (Mac)かな upのみ
-F24 up::			; または sc76 up::
-sc77 up::	; lang4
-sc78 up::	; lang3
+Left up::
+Right up::
+Up up::
+Down up::
+Home up::
+End up::
+PgUp up::
+PgDn up::
 sc79 up::	; (JIS)変換
 sc7B up::	; (JIS)無変換
+sc70 up::	; (JIS)ひらがな
+sc78 up::	; KC_LANG3
+sc77 up::	; KC_LANG4
+sc71 up::	; (Mac)英数 upのみ
+sc72 up::	; (Mac)かな upのみ
+F1 up::				; sc3B up::	vk70 up::
+F2 up::				; sc3C up::	vk71 up::
+F3 up::				; sc3D up::	vk72 up::
+F4 up::				; sc3E up::	vk73 up::
+F5 up::				; sc3F up::	vk74 up::
+F6 up::				; sc40 up::	vk75 up::
+F7 up::				; sc41 up::	vk76 up::
+F8 up::				; sc42 up::	vk77 up::
+F9 up::				; sc43 up::	vk78 up::
+F10 up::			; sc44 up::	vk79 up::
+F11 up::			; sc57 up::	vk7A up::
+F12 up::			; sc58 up::	vk7B up::
+F13 up::			; sc64 up::	vk7C up::
+F14 up::			; sc65 up::	vk7D up::
+F15 up::			; sc66 up::	vk7E up::
+F16 up::			; sc67 up::	vk7F up::
+F17 up::			; sc68 up::	vk80 up::
+F18 up::			; sc69 up::	vk81 up::
+F19 up::			; sc6A up::	vk82 up::
+F20 up::			; sc6B up::	vk83 up::
+F21 up::			; sc6C up::	vk84 up::
+F22 up::			; sc6D up::	vk85 up::
+F23 up::			; sc6E up::	vk86 up::
+F24 up::			; sc76 up::	vk87 up::
+Esc up::			; sc01 up::	vk1B up::
+AppsKey up::		; vk5D up::
+PrintScreen up::	; vk2C up::
+sc54 up::	; SysRq
+Pause up::			; sc45 up::	vk13 up::
+;Break up::			; 認識しない
+;Sleep up::			; 認識しない
+;Help up::			; 認識しない
+CtrlBreak up::
+sc3A up::	; (JIS)英数	(US)CapsLock
+ScrollLock up::		; sc46 up::
+NumLock up::		; vk90 up::
+LCtrl up::			; vkA2 up::
+RCtrl up::			; vkA3 up::
+LAlt up::			; vkA4 up::
+RAlt up::			; vkA5 up::
+LShift up::			; sc2A up::	vkA0 up::
+RShift up::			; vkA1 up::
+LWin up::			; vk5B up::
+RWin up::			; vk5C up::
+Numpad0 up::		; vk60 up::
+Numpad1 up::		; vk61 up::
+Numpad2 up::		; vk62 up::
+Numpad3 up::		; vk63 up::
+Numpad4 up::		; vk64 up::
+Numpad5 up::		; vk65 up::
+Numpad6 up::		; vk66 up::
+Numpad7 up::		; vk67 up::
+Numpad8 up::		; vk68 up::
+Numpad9 up::		; vk69 up::
+NumpadDot up::		; vk6E up::
+NumpadDel up::		; vk2E up::
+NumpadIns up::		; vk2D up::
+NumpadClear up::	; vk0C up::
+NumpadUp up::		; vk26 up::
+NumpadDown up::		; vk28 up::
+NumpadLeft up::		; vk25 up::
+NumpadRight up::	; vk27 up::
+NumpadHome up::		; vk24 up::
+NumpadEnd up::		; vk23 up::
+NumpadPgUp up::		; vk21 up::
+NumpadPgDn up::		; vk22 up::
+NumpadDiv up::		; vk6F up::
+NumpadMult up::		; vk6A up::
+NumpadAdd up::		; vk6B up::
+NumpadSub up::		; vk6D up::
+NumpadEnter up::
+sc59 up::	; (Mac)=
 sc7E up::	; (Mac),
-;Break up::	; 不可
-;Sleep up::	; 不可
-;Help up::	; 不可
+sc5C up::	; (NEC),
 Browser_Back up::		; vkA6 up::
 Browser_Forward up::	; vkA7 up::
 Browser_Refresh up::	; vkA8 up::
