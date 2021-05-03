@@ -87,8 +87,7 @@ WinAPI_timeBeginPeriod(1)
 Run, Notepad.exe, , , pid	; メモ帳を起動
 Sleep, 200
 WinActivate, ahk_pid %pid%	；アクティブ化
-Send, キー入力の時間差を計測します。10秒間、何もキーを押さなければ終了します。
-SetTimer, Timeout, 10000	; 10 秒間、何もキーを押さなければ終了
+Send, キー入力の時間差を計測します。他のウインドウでキーを押すと終了します。
 
 ; ----------------------------------------------------------------------
 ; メニュー表示
@@ -105,10 +104,6 @@ exit	; 起動時はここまで実行
 ; サブルーチン
 ; ----------------------------------------------------------------------
 
-Timeout:	; 一定時間、キーを押さなければ終了
-	IfWinActive, ahk_pid %pid%
-		Send, `n終了.	; 起動したメモ帳がアクティブだったら出力
-	ExitApp
 
 ; ----------------------------------------------------------------------
 ; 関数
@@ -123,8 +118,6 @@ Convert()
 		, LastTerm := " "
 ;	local Str, Start, Term
 ;		, diff, number, temp
-
-	SetTimer, Timeout, 10000	; タイマー更新
 
 	if (run)
 		return	; 多重起動防止で終了
@@ -159,7 +152,7 @@ Convert()
 		}
 		; 前回の入力からの時間を書き出し
 		diff := KeyTime - LastKeyTime
-		if diff >= 0
+		if (diff >= 0 && diff <= 1050)
 			Send, % "(" . diff . "ms) "
 		; 入力文字の書き出し
 		if (Str = "sc29" && KeyDriver != "kbd101.dll")
