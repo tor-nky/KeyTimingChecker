@@ -27,7 +27,7 @@ SetWorkingDir %A_ScriptDir%	; スクリプトの作業ディレクトリを変�
 #NoEnv						; 変数名を解釈するとき、環境変数を無視する
 SetBatchLines, -1			; 自動Sleepなし
 ListLines, Off				; スクリプトの実行履歴を取らない
-SetKeyDelay, 0, 0			; キーストローク間のディレイを変更
+SetKeyDelay, -1, -1			; キーストローク間のディレイを変更
 #MenuMaskKey vk07			; Win または Alt の押下解除時のイベントを隠蔽するためのキーを変更する
 #UseHook					; ホットキーはすべてフックを使用する
 ;Process, Priority, , High	; プロセスの優先度を変更
@@ -181,6 +181,7 @@ Convert()
 		}
 
 		Send, % Str . Term		; 出力 ※SendInput は取りこぼしが起きるので不可
+		Sleep, 0
 
 		LastKeyTime := KeyTime	; 押した時間を保存
 		LastTerm := Term		; キーの上げ下げを保存
