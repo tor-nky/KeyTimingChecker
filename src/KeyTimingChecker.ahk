@@ -44,11 +44,13 @@ SetKeyDelay, -1, -1			; キーストローク間のディレイを変更
 ; ----------------------------------------------------------------------
 
 ; 入力バッファ
-InBuf := []
-InBufTime := []	; 入力の時間
-InBufRead := 0	; 読み出し位置
-InBufWrite := 0	; 書き込み位置
+InBufsKey := []
+InBufsTime := []	; 入力の時間
+InBufReadPos := 0	; 読み出し位置
+InBufWritePos := 0	; 書き込み位置
 InBufRest := 63
+; 出力バッファ
+OutBufs := []
 
 ;
 SCArray := ["Esc", "1", "2", "3", "4", "5", "6", "7", "8", "9", "Ø", "-", "{sc0D}", "BackSpace", "Tab"
@@ -92,6 +94,7 @@ Run, Notepad.exe, , , pid	; メモ帳を起動
 Sleep, 500
 WinActivate, ahk_pid %pid%	；アクティブ化
 Send, キー入力の時間差を計測します。他のウインドウでキーを押すと終了します。
+SetTimer, SendTimer, 10
 
 ; ----------------------------------------------------------------------
 ; メニュー表示
@@ -108,32 +111,73 @@ exit	; 起動時はここまで実行
 ; サブルーチン
 ; ----------------------------------------------------------------------
 
+SendTimer:
+	c := OutBufs.RemoveAt(1)
+	Send, % c
+	return
+
 
 ; ----------------------------------------------------------------------
 ; 関数
 ; ----------------------------------------------------------------------
 
+; 文字列 Str1 を適宜ディレイを入れながら出力する
+SendNeo(Str1)
+{
+	global OutBufs
+;	local len			; Str1 の長さ
+;		, StrChopped	; 細切れにした文字列
+;		, i, c, bracket
+
+	; 文字列を細切れにして出力
+	len := StrLen(Str1)
+	StrChopped := ""
+	bracket := 0
+	i := 1
+	while (i <= len)
+	{
+		c := SubStr(Str1, i, 1)
+		if (c == "}" && bracket != 1)
+			bracket := 0
+		else if (c == "{" || bracket)
+			bracket++
+		StrChopped .= c
+		if (!(bracket || c == "+" || c == "^" || c == "!" || c == "#")
+			|| i = len )
+		{
+			OutBufs.Push(StrChopped)	; バッファに出力
+			StrChopped := ""
+		}
+		i++
+	}
+
+	return
+}
+
 Convert()
 {
 	global SCArray, KeyDriver, pid
-		, InBuf, InBufRead, InBufTime, InBufRest
-	static run := 0	; 多重起動防止フラグ
+		, InBufsKey, InBufReadPos, InBufsTime, InBufRest
+	static ConvRest := 0	; 多重起動防止フラグ
 		, LastKeyTime := 0
 		, LastTerm := " "
 ;	local Str, Term
 ;		, diff, number, temp
 
-	if (run)
-		return	; 多重起動防止で終了
+	if (ConvRest > 0)
+		return	; 多重起動防止で戻る
 
 	IfWinNotActive, ahk_pid %pid%
+	{
+		WinAPI_timeEndPeriod(1)	; タイマーの精度を戻す
 		ExitApp		; 起動したメモ帳以外への入力だったら終了
+	}
 
 	; 入力バッファが空になるまで
-	while (run := 63 - InBufRest)
+	while (ConvRest := 63 - InBufRest)
 	{
 		; 入力バッファから読み出し
-		Str := InBuf[InBufRead], KeyTime := InBufTime[InBufRead++], InBufRead &= 63, InBufRest++
+		Str := InBufsKey[InBufReadPos], KeyTime := InBufsTime[InBufReadPos++], InBufReadPos &= 63, InBufRest++
 
 		; キーの上げ下げを調べる
 		StringRight, Term, Str, 3	; Term に入力末尾の2文字を入れる
@@ -142,22 +186,22 @@ Convert()
 			Term := "↑"
 			Str := SubStr(Str, 1, StrLen(Str) - 3)
 			if (Term != LastTerm)
-				Send, `n`t`t	; キーの上げ下げが変わったら改行、空白
+				SendNeo("{Enter}{Tab}{Tab}")
 			else
-				Send, {Space}
+				SendNeo("{Space}")
 		}
 		else
 		{
 			Term := ""
 			if (Term != LastTerm)
-				Send, `n		; キーの上げ下げが変わったら改行
+				SendNeo("{Enter}")	; キーの上げ下げが変わったら改行
 			else
-				Send, {Space}
+				SendNeo("{Space}")
 		}
 		; 前回の入力からの時間を書き出し
 		diff := KeyTime - LastKeyTime
 		if diff <= 1050
-			Send, % "(" . diff . "ms) "
+			SendNeo("(" . diff . "ms) ")
 		; 入力文字の書き出し
 		if (Str = "sc29" && KeyDriver != "kbd101.dll")
 			Str := "半角/全角"
@@ -180,8 +224,8 @@ Convert()
 			}
 		}
 
-		Send, % Str . Term		; 出力 ※SendInput は取りこぼしが起きるので不可
-		Sleep, 0
+		; 1文字ごとに間隔を置いて出力
+		SendNeo(Str . Term)
 
 		LastKeyTime := KeyTime	; 押した時間を保存
 		LastTerm := Term		; キーの上げ下げを保存
@@ -368,8 +412,8 @@ Launch_App1::		; vkB6::
 Launch_App2::		; vkB7::
 	; 入力バッファへ保存
 	; キーを押す方はいっぱいまで使わない
-	InBuf[InBufWrite] := A_ThisHotkey, InBufTime[InBufWrite] := WinAPI_timeGetTime()
-		, InBufWrite := (InBufRest > 14) ? ++InBufWrite & 63 : InBufWrite
+	InBufsKey[InBufWritePos] := A_ThisHotkey, InBufsTime[InBufWritePos] := WinAPI_timeGetTime()
+		, InBufWritePos := (InBufRest > 14) ? ++InBufWritePos & 63 : InBufWritePos
 		, (InBufRest > 14) ? InBufRest-- :
 	Convert()	; 変換ルーチン
 	return
@@ -540,8 +584,8 @@ Launch_Media up::		; vkB5 up::
 Launch_App1 up::		; vkB6 up::
 Launch_App2 up::		; vkB7 up::
 	; 入力バッファへ保存
-	InBuf[InBufWrite] := A_ThisHotkey, InBufTime[InBufWrite] := WinAPI_timeGetTime()
-		, InBufWrite := InBufRest ? ++InBufWrite & 63 : InBufWrite
+	InBufsKey[InBufWritePos] := A_ThisHotkey, InBufsTime[InBufWritePos] := WinAPI_timeGetTime()
+		, InBufWritePos := InBufRest ? ++InBufWritePos & 63 : InBufWritePos
 		, InBufRest ? InBufRest-- :
 	Convert()	; 変換ルーチン
 	return
