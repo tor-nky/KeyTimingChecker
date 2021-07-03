@@ -152,7 +152,7 @@ SendNeo(Str1)
 
 Convert()
 {
-	global SCArray, KeyDriver, pid
+	global SCArray, KeyDriver
 		, InBufsKey, InBufReadPos, InBufsTime, InBufRest
 	static ConvRest := 0	; 多重起動防止フラグ
 		, LastKeyTime := QPC()
