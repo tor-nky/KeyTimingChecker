@@ -12,10 +12,10 @@
 ; See the License for the specific language governing permissions and
 ; limitations under the License.
 
+
 ; **********************************************************************
 ;	キー入力の時間差を計測する
 ; **********************************************************************
-
 
 ; ----------------------------------------------------------------------
 ; 初期設定
@@ -153,7 +153,7 @@ Convert()
 	global SCArray, KeyDriver, pid
 		, InBufsKey, InBufReadPos, InBufsTime, InBufRest
 	static ConvRest := 0	; 多重起動防止フラグ
-		, LastKeyTime := 0
+		, LastKeyTime := QPC()
 		, LastTerm := " "
 ;	local Str, Term
 ;		, diff, number, temp
@@ -165,10 +165,10 @@ Convert()
 		ExitApp		; 起動したメモ帳以外への入力だったら終了
 
 	; 入力バッファが空になるまで
-	while (ConvRest := 63 - InBufRest)
+	while (ConvRest := InBufsKey.Length())
 	{
 		; 入力バッファから読み出し
-		Str := InBufsKey[InBufReadPos], KeyTime := InBufsTime[InBufReadPos++], InBufReadPos &= 63, InBufRest++
+		Str := InBufsKey.RemoveAt(1), KeyTime := InBufsTime.RemoveAt(1)
 
 		; キーの上げ下げを調べる
 		StringRight, Term, Str, 3	; Term に入力末尾の2文字を入れる
@@ -400,13 +400,7 @@ Launch_Mail::		; vkB4::
 Launch_Media::		; vkB5::
 Launch_App1::		; vkB6::
 Launch_App2::		; vkB7::
-	; 入力バッファへ保存
-	; キーを押す方はいっぱいまで使わない
-	InBufsKey[InBufWritePos] := A_ThisHotkey, InBufsTime[InBufWritePos] := QPC()
-		, InBufWritePos := (InBufRest > 14) ? ++InBufWritePos & 63 : InBufWritePos
-		, (InBufRest > 14) ? InBufRest-- :
-	Convert()	; 変換ルーチン
-	return
+
 
 ; キー押上げ
 sc29 up::	; (JIS)半角/全角	(US)`
@@ -574,9 +568,7 @@ Launch_Media up::		; vkB5 up::
 Launch_App1 up::		; vkB6 up::
 Launch_App2 up::		; vkB7 up::
 	; 入力バッファへ保存
-	InBufsKey[InBufWritePos] := A_ThisHotkey, InBufsTime[InBufWritePos] := QPC()
-		, InBufWritePos := InBufRest ? ++InBufWritePos & 63 : InBufWritePos
-		, InBufRest ? InBufRest-- :
+	InBufsKey.Push(A_ThisHotkey), InBufsTime.Push(QPC())
 	Convert()	; 変換ルーチン
 	return
 
