@@ -72,22 +72,16 @@ RegRead, KeyDriver, HKEY_LOCAL_MACHINE, SYSTEM\CurrentControlSet\Services\i8042p
 ; タイマー関数、設定
 ; ----------------------------------------------------------------------
 
-; 参照: https://www.autohotkey.com/boards/viewtopic.php?t=4667
-WinAPI_timeGetTime()	; http://msdn.microsoft.com/en-us/library/dd757629.aspx
-{
-	return DllCall("Winmm.dll\timeGetTime", "UInt")
+; 参照: https://www.autohotkey.com/boards/viewtopic.php?t=36016
+QPCInit() {
+	DllCall("QueryPerformanceFrequency", "Int64P", Freq)
+	return Freq / 1000.0
 }
-WinAPI_timeBeginPeriod(uPeriod)	; http://msdn.microsoft.com/en-us/library/dd757624.aspx
-{
-	return DllCall("Winmm.dll\timeBeginPeriod", "UInt", uPeriod, "UInt")
+QPC() { ; ミリ秒単位
+	static Freq := QPCInit()
+	DllCall("QueryPerformanceCounter", "Int64P", Count)
+	Return, Count / Freq
 }
-WinAPI_timeEndPeriod(uPeriod)	; http://msdn.microsoft.com/en-us/library/dd757626.aspx
-{
-	return DllCall("Winmm.dll\timeEndPeriod", "UInt", uPeriod, "UInt")
-}
-
-; タイマーの精度を調整
-WinAPI_timeBeginPeriod(1)
 
 
 Run, Notepad.exe, , , pid	; メモ帳を起動
@@ -165,13 +159,10 @@ Convert()
 ;		, diff, number, temp
 
 	if (ConvRest > 0)
-		return	; 多重起動防止で戻る
+		return	; 多重起動防止で終了
 
 	IfWinNotActive, ahk_pid %pid%
-	{
-		WinAPI_timeEndPeriod(1)	; タイマーの精度を戻す
 		ExitApp		; 起動したメモ帳以外への入力だったら終了
-	}
 
 	; 入力バッファが空になるまで
 	while (ConvRest := 63 - InBufRest)
@@ -199,9 +190,8 @@ Convert()
 				SendNeo("{Space}")
 		}
 		; 前回の入力からの時間を書き出し
-		diff := KeyTime - LastKeyTime
-		if diff <= 1050
-			SendNeo("(" . diff . "ms) ")
+		diff := round(KeyTime - LastKeyTime, 1)
+		SendNeo("(" . diff . "ms) ")
 		; 入力文字の書き出し
 		if (Str = "sc29" && KeyDriver != "kbd101.dll")
 			Str := "半角/全角"
@@ -412,7 +402,7 @@ Launch_App1::		; vkB6::
 Launch_App2::		; vkB7::
 	; 入力バッファへ保存
 	; キーを押す方はいっぱいまで使わない
-	InBufsKey[InBufWritePos] := A_ThisHotkey, InBufsTime[InBufWritePos] := WinAPI_timeGetTime()
+	InBufsKey[InBufWritePos] := A_ThisHotkey, InBufsTime[InBufWritePos] := QPC()
 		, InBufWritePos := (InBufRest > 14) ? ++InBufWritePos & 63 : InBufWritePos
 		, (InBufRest > 14) ? InBufRest-- :
 	Convert()	; 変換ルーチン
@@ -584,7 +574,7 @@ Launch_Media up::		; vkB5 up::
 Launch_App1 up::		; vkB6 up::
 Launch_App2 up::		; vkB7 up::
 	; 入力バッファへ保存
-	InBufsKey[InBufWritePos] := A_ThisHotkey, InBufsTime[InBufWritePos] := WinAPI_timeGetTime()
+	InBufsKey[InBufWritePos] := A_ThisHotkey, InBufsTime[InBufWritePos] := QPC()
 		, InBufWritePos := InBufRest ? ++InBufWritePos & 63 : InBufWritePos
 		, InBufRest ? InBufRest-- :
 	Convert()	; 変換ルーチン
