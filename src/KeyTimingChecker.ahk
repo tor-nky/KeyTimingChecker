@@ -106,6 +106,8 @@ exit	; 起動時はここまで実行
 ; ----------------------------------------------------------------------
 
 SendTimer:
+	IfWinNotActive, ahk_pid %pid%
+		ExitApp		; 起動したメモ帳以外への入力だったら終了
 	c := OutBufs.RemoveAt(1)
 	Send, % c
 	return
@@ -160,9 +162,6 @@ Convert()
 
 	if (ConvRest > 0)
 		return	; 多重起動防止で戻る
-
-	IfWinNotActive, ahk_pid %pid%
-		ExitApp		; 起動したメモ帳以外への入力だったら終了
 
 	; 入力バッファが空になるまで
 	while (ConvRest := InBufsKey.Length())
