@@ -159,7 +159,7 @@ Convert()
 ;		, diff, number, temp
 
 	if (ConvRest > 0)
-		return	; 多重起動防止で終了
+		return	; 多重起動防止で戻る
 
 	IfWinNotActive, ahk_pid %pid%
 		ExitApp		; 起動したメモ帳以外への入力だったら終了
