@@ -75,14 +75,13 @@ RegRead, KeyDriver, HKEY_LOCAL_MACHINE, SYSTEM\CurrentControlSet\Services\i8042p
 ; 参照: https://www.autohotkey.com/boards/viewtopic.php?t=36016
 QPCInit() {
 	DllCall("QueryPerformanceFrequency", "Int64P", Freq)
-	return Freq / 1000.0
+	return Freq
 }
-QPC() { ; ミリ秒単位
-	static Freq := QPCInit()
+QPC() {	; ミリ秒単位
+	static Freq := QPCInit() / 1000.0
 	DllCall("QueryPerformanceCounter", "Int64P", Count)
 	Return, Count / Freq
 }
-
 
 Run, Notepad.exe, , , pid	; メモ帳を起動
 Sleep, 500
