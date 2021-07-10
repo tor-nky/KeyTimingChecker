@@ -46,13 +46,7 @@ SetKeyDelay, -1, -1			; キーストローク間のディレイを変更
 ; 入力バッファ
 InBufsKey := []
 InBufsTime := []	; 入力の時間
-InBufReadPos := 0	; 読み出し位置
-InBufWritePos := 0	; 書き込み位置
-InBufRest := 63
-; 出力バッファ
-OutBufs := []
 
-;
 SCArray := ["Esc", "1", "2", "3", "4", "5", "6", "7", "8", "9", "Ø", "-", "{sc0D}", "BackSpace", "Tab"
 	, "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "{sc1A}", "{sc1B}", "", "", "A", "S"
 	, "D", "F", "G", "H", "J", "K", "L", "{sc27}", "{sc28}", "{sc29}", "LShift", "{sc2B}", "Z", "X", "C", "V"
@@ -62,6 +56,9 @@ SCArray := ["Esc", "1", "2", "3", "4", "5", "6", "7", "8", "9", "Ø", "-", "{sc0
 	, "", "", "", "", "F13", "F14", "F15", "F16", "F17", "F18", "F19", "F20", "F21", "F22", "F23", ""
 	, "(JIS)ひらがな", "(Mac)英数", "(Mac)かな", "(JIS)_", "", "", "F24", "KC_LANG4"
 	, "KC_LANG3", "(JIS)変換", "", "(JIS)無変換", "", "(JIS)￥", "(Mac),", ""]
+
+LastKeyTime := QPC()
+LastTerm := " "
 
 ; キーボードドライバを調べて KeyDriver に格納する
 ; 参考: https://ixsvr.dyndns.org/blog/764
@@ -83,88 +80,30 @@ QPC() {	; ミリ秒単位
 	Return, Count / Freq
 }
 
+; ----------------------------------------------------------------------
+; 起動
+; ----------------------------------------------------------------------
+
 Run, Notepad.exe, , , pid	; メモ帳を起動
 Sleep, 500
 WinActivate, ahk_pid %pid%	；アクティブ化
 Send, キー入力の時間差を計測します。他のウインドウでキーを押すと終了します。
-SetTimer, SendTimer, 10
-
-; ----------------------------------------------------------------------
-; メニュー表示
-; ----------------------------------------------------------------------
 
 exit	; 起動時はここまで実行
-
-; ----------------------------------------------------------------------
-; メニュー動作
-; ----------------------------------------------------------------------
-
 
 ; ----------------------------------------------------------------------
 ; サブルーチン
 ; ----------------------------------------------------------------------
 
 SendTimer:
-	IfWinNotActive, ahk_pid %pid%
-		ExitApp		; 起動したメモ帳以外への入力だったら終了
-	c := OutBufs.RemoveAt(1)
-	Send, % c
-	return
-
-
-; ----------------------------------------------------------------------
-; 関数
-; ----------------------------------------------------------------------
-
-; 文字列 Str1 を適宜ディレイを入れながら出力する
-SendNeo(Str1)
-{
-	global OutBufs
-;	local len			; Str1 の長さ
-;		, StrChopped	; 細切れにした文字列
-;		, i, c, bracket
-
-	; 文字列を細切れにして出力
-	len := StrLen(Str1)
-	StrChopped := ""
-	bracket := 0
-	i := 1
-	while (i <= len)
-	{
-		c := SubStr(Str1, i, 1)
-		if (c == "}" && bracket != 1)
-			bracket := 0
-		else if (c == "{" || bracket)
-			bracket++
-		StrChopped .= c
-		if (!(bracket || c == "+" || c == "^" || c == "!" || c == "#")
-			|| i = len )
-		{
-			OutBufs.Push(StrChopped)	; バッファに出力
-			StrChopped := ""
-		}
-		i++
-	}
-
-	return
-}
-
-Convert()
-{
-	global SCArray, KeyDriver
-		, InBufsKey, InBufReadPos, InBufsTime, InBufRest
-	static ConvRest := 0	; 多重起動防止フラグ
-		, LastKeyTime := QPC()
-		, LastTerm := " "
-;	local Str, Term
-;		, diff, number, temp
-
-	if (ConvRest > 0)
-		return	; 多重起動防止で戻る
+;	local Str, KeyTime, Term, diff, number, temp
 
 	; 入力バッファが空になるまで
 	while (ConvRest := InBufsKey.Length())
 	{
+		IfWinNotActive, ahk_pid %pid%
+			ExitApp		; 起動したメモ帳以外へは出力しないで終了
+
 		; 入力バッファから読み出し
 		Str := InBufsKey.RemoveAt(1), KeyTime := InBufsTime.RemoveAt(1)
 
@@ -175,21 +114,21 @@ Convert()
 			Term := "↑"
 			Str := SubStr(Str, 1, StrLen(Str) - 3)
 			if (Term != LastTerm)
-				SendNeo("{Enter}{Tab}{Tab}")
+				Send, % "{Enter}{Tab}{Tab}"
 			else
-				SendNeo("{Space}")
+				Send, % "{Space}"
 		}
 		else
 		{
 			Term := ""
 			if (Term != LastTerm)
-				SendNeo("{Enter}")	; キーの上げ下げが変わったら改行
+				Send, % "{Enter}"	; キーの上げ下げが変わったら改行
 			else
-				SendNeo("{Space}")
+				Send, % "{Space}"
 		}
 		; 前回の入力からの時間を書き出し
 		diff := round(KeyTime - LastKeyTime, 1)
-		SendNeo("(" . diff . "ms) ")
+		Send, % "(" . diff . "ms) "
 		; 入力文字の書き出し
 		if (Str = "sc29" && KeyDriver != "kbd101.dll")
 			Str := "半角/全角"
@@ -213,15 +152,13 @@ Convert()
 		}
 
 		; 1文字ごとに間隔を置いて出力
-		SendNeo(Str . Term)
+		Send, % Str . Term
 
 		LastKeyTime := KeyTime	; 押した時間を保存
 		LastTerm := Term		; キーの上げ下げを保存
 	}
 
 	return
-}
-
 
 ; ----------------------------------------------------------------------
 ; ホットキー
@@ -230,10 +167,7 @@ Convert()
 ;		http://kts.sakaiweb.com/keymill.html
 ; ※参考：https://docs.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
 ; ----------------------------------------------------------------------
-#MaxThreadsPerHotkey 2	; 1つのホットキー・ホットストリングに多重起動可能な
-						; 最大のスレッド数を設定
-
-; キー入力部(シフトなし)
+; キー入力部
 sc29::	; (JIS)半角/全角	(US)`
 sc02::		; 1::	vk31::
 sc03::		; 2::	vk32::
@@ -567,7 +501,7 @@ Launch_App1 up::		; vkB6 up::
 Launch_App2 up::		; vkB7 up::
 	; 入力バッファへ保存
 	InBufsKey.Push(A_ThisHotkey), InBufsTime.Push(QPC())
-	Convert()	; 変換ルーチン
+	IfWinNotActive, ahk_pid %pid%
+		ExitApp					; 起動したメモ帳以外への入力だったら終了
+	SetTimer, SendTimer, 1050	; キー変化なく1.05秒たったら表示
 	return
-
-#MaxThreadsPerHotkey 1	; 元に戻す
