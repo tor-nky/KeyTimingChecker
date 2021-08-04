@@ -86,7 +86,7 @@ QPC() {	; ミリ秒単位
 
 Run, Notepad.exe, , , pid	; メモ帳を起動
 Sleep, 500
-WinActivate, ahk_pid %pid%	；アクティブ化
+WinActivate, ahk_pid %pid%	; アクティブ化
 Send, キー入力の時間差を計測します。他のウインドウでキーを押すと終了します。
 
 exit	; 起動時はここまで実行
