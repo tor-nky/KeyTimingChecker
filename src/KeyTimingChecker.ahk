@@ -31,7 +31,7 @@ SetKeyDelay, -1, -1			; キーストローク間のディレイを変更
 #MenuMaskKey vk07			; Win または Alt の押下解除時のイベントを隠蔽するためのキーを変更する
 #UseHook					; ホットキーはすべてフックを使用する
 ;Process, Priority, , High	; プロセスの優先度を変更
-;Thread, interrupt, 15, 6	; スレッド開始から15ミリ秒ないし1行以内の割り込みを、絶対禁止
+Thread, interrupt, 15, 6	; スレッド開始から15ミリ秒ないし6行以内の割り込みを、絶対禁止
 ;SetStoreCapslockMode, off	; Sendコマンド実行時にCapsLockの状態を自動的に変更しない
 
 ;SetFormat, Integer, H		; 数値演算の結果を、16進数の整数による文字列で表現する
@@ -64,6 +64,16 @@ LastTerm := " "
 ; 参考: https://ixsvr.dyndns.org/blog/764
 RegRead, KeyDriver, HKEY_LOCAL_MACHINE, SYSTEM\CurrentControlSet\Services\i8042prt\Parameters, LayerDriver JPN
 
+; ----------------------------------------------------------------------
+; 起動
+; ----------------------------------------------------------------------
+
+Run, Notepad.exe, , , pid	; メモ帳を起動
+Sleep, 500
+WinActivate, ahk_pid %pid%	; アクティブ化
+Send, キー入力の時間差を計測します。他のウインドウでキーを押すと終了します。
+
+exit	; 起動時はここまで実行
 
 ; ----------------------------------------------------------------------
 ; タイマー関数、設定
@@ -81,22 +91,13 @@ QPC() {	; ミリ秒単位
 }
 
 ; ----------------------------------------------------------------------
-; 起動
-; ----------------------------------------------------------------------
-
-Run, Notepad.exe, , , pid	; メモ帳を起動
-Sleep, 500
-WinActivate, ahk_pid %pid%	；アクティブ化
-Send, キー入力の時間差を計測します。他のウインドウでキーを押すと終了します。
-
-exit	; 起動時はここまで実行
-
-; ----------------------------------------------------------------------
 ; サブルーチン
 ; ----------------------------------------------------------------------
 
 SendTimer:
-;	local Str, KeyTime, Term, diff, number, temp
+;	local Str, KeyTime, Term, diff, number, temp, BeginKeyTime
+
+	BeginKeyTime := InBufsTime[1]	; 一塊の入力の先頭の時間を保存
 
 	; 入力バッファが空になるまで
 	while (ConvRest := InBufsKey.Length())
@@ -157,6 +158,9 @@ SendTimer:
 		LastKeyTime := KeyTime	; 押した時間を保存
 		LastTerm := Term		; キーの上げ下げを保存
 	}
+
+	; 一塊の入力時間合計を出力
+	Send, % "{Enter}" . "***** " . round(LastKeyTime - BeginKeyTime, 1) . "ms{Enter 2}"
 
 	return
 
@@ -503,5 +507,5 @@ Launch_App2 up::		; vkB7 up::
 	InBufsKey.Push(A_ThisHotkey), InBufsTime.Push(QPC())
 	IfWinNotActive, ahk_pid %pid%
 		ExitApp					; 起動したメモ帳以外への入力だったら終了
-	SetTimer, SendTimer, 1050	; キー変化なく1.05秒たったら表示
+	SetTimer, SendTimer, -1050	; キー変化なく1.05秒たったら表示
 	return
