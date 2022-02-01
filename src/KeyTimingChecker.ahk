@@ -1,4 +1,4 @@
-﻿; Copyright 2021 Satoru NAKAYA
+; Copyright 2021 Satoru NAKAYA
 ;
 ; Licensed under the Apache License, Version 2.0 (the "License");
 ; you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 
 ; **********************************************************************
 ;	キー入力の時間差を計測する
+;		正確に測るため、出力は 1.05 秒後にまとめて
 ; **********************************************************************
 
 ; ----------------------------------------------------------------------
@@ -31,7 +32,7 @@ SetKeyDelay, -1, -1			; キーストローク間のディレイを変更
 #MenuMaskKey vk07			; Win または Alt の押下解除時のイベントを隠蔽するためのキーを変更する
 #UseHook					; ホットキーはすべてフックを使用する
 ;Process, Priority, , High	; プロセスの優先度を変更
-Thread, interrupt, 15, 6	; スレッド開始から15ミリ秒ないし6行以内の割り込みを、絶対禁止
+Thread, interrupt, 15, 7	; スレッド開始から15ミリ秒ないし7行以内の割り込みを、絶対禁止
 ;SetStoreCapslockMode, off	; Sendコマンド実行時にCapsLockの状態を自動的に変更しない
 
 ;SetFormat, Integer, H		; 数値演算の結果を、16進数の整数による文字列で表現する
@@ -95,12 +96,14 @@ QPC() {	; ミリ秒単位
 ; ----------------------------------------------------------------------
 
 SendTimer:
-;	local Str, KeyTime, Term, diff, number, temp, BeginKeyTime
+;	global	InBufsKey, InBufsTime
+;	static	LastKeyTime, LastTerm
+;	local	Str, KeyTime, Term, diff, number, temp, BeginKeyTime
 
 	BeginKeyTime := InBufsTime[1]	; 一塊の入力の先頭の時間を保存
 
 	; 入力バッファが空になるまで
-	while (ConvRest := InBufsKey.Length())
+	while (InBufsKey.Length())
 	{
 		IfWinNotActive, ahk_pid %pid%
 			ExitApp		; 起動したメモ帳以外へは出力しないで終了
@@ -152,7 +155,6 @@ SendTimer:
 			}
 		}
 
-		; 1文字ごとに間隔を置いて出力
 		Send, % Str . Term
 
 		LastKeyTime := KeyTime	; 押した時間を保存
@@ -171,6 +173,9 @@ SendTimer:
 ;		http://kts.sakaiweb.com/keymill.html
 ; ※参考：https://docs.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
 ; ----------------------------------------------------------------------
+#MaxThreadsPerHotkey 3	; 1つのホットキー・ホットストリングに多重起動可能な
+						; 最大のスレッド数を設定
+
 ; キー入力部
 sc29::	; (JIS)半角/全角	(US)`
 sc02::		; 1::	vk31::
@@ -509,3 +514,5 @@ Launch_App2 up::		; vkB7 up::
 		ExitApp					; 起動したメモ帳以外への入力だったら終了
 	SetTimer, SendTimer, -1050	; キー変化なく1.05秒たったら表示
 	return
+
+#MaxThreadsPerHotkey 1	; 元に戻す
