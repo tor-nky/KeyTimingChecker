@@ -32,7 +32,7 @@ SetKeyDelay, -1, -1			; キーストローク間のディレイを変更
 #MenuMaskKey vk07			; Win または Alt の押下解除時のイベントを隠蔽するためのキーを変更する
 #UseHook					; ホットキーはすべてフックを使用する
 ;Process, Priority, , High	; プロセスの優先度を変更
-Thread, interrupt, 15, 7	; スレッド開始から15ミリ秒ないし7行以内の割り込みを、絶対禁止
+Thread, interrupt, 15, 10	; スレッド開始から15ミリ秒ないし10行以内の割り込みを、絶対禁止
 ;SetStoreCapslockMode, off	; Sendコマンド実行時にCapsLockの状態を自動的に変更しない
 
 ;SetFormat, Integer, H		; 数値演算の結果を、16進数の整数による文字列で表現する
@@ -45,10 +45,10 @@ Thread, interrupt, 15, 7	; スレッド開始から15ミリ秒ないし7行以�
 ; ----------------------------------------------------------------------
 
 ; 入力バッファ
-InBufsKey := []
-InBufsTime := []	; 入力の時間
+inBufsKey := []		; [String]型
+inBufsTime := []	; [Double]型	入力の時間
 
-SCArray := ["Esc", "1", "2", "3", "4", "5", "6", "7", "8", "9", "Ø", "-", "{sc0D}", "BackSpace", "Tab"
+scArray := ["Esc", "1", "2", "3", "4", "5", "6", "7", "8", "9", "Ø", "-", "{sc0D}", "BackSpace", "Tab"
 	, "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "{sc1A}", "{sc1B}", "", "", "A", "S"
 	, "D", "F", "G", "H", "J", "K", "L", "{sc27}", "{sc28}", "{sc29}", "LShift", "{sc2B}", "Z", "X", "C", "V"
 	, "B", "N", "M", ",", ".", "/", "", "", "", "Space", "CapsLock", "F1", "F2", "F3", "F4", "F5"
@@ -57,38 +57,45 @@ SCArray := ["Esc", "1", "2", "3", "4", "5", "6", "7", "8", "9", "Ø", "-", "{sc0
 	, "", "", "", "", "F13", "F14", "F15", "F16", "F17", "F18", "F19", "F20", "F21", "F22", "F23", ""
 	, "(JIS)ひらがな", "(Mac)英数", "(Mac)かな", "(JIS)_", "", "", "F24", "KC_LANG4"
 	, "KC_LANG3", "(JIS)変換", "", "(JIS)無変換", "", "(JIS)￥", "(Mac),", ""]
+			; [String]型
 
-LastKeyTime := QPC()
-LastTerm := " "
+lastKeyTime := QPC()	; Double型
 
-; キーボードドライバを調べて KeyDriver に格納する
+; キーボードドライバを調べて keyDriver に格納する
 ; 参考: https://ixsvr.dyndns.org/blog/764
-RegRead, KeyDriver, HKEY_LOCAL_MACHINE, SYSTEM\CurrentControlSet\Services\i8042prt\Parameters, LayerDriver JPN
+RegRead, keyDriver, HKEY_LOCAL_MACHINE, SYSTEM\CurrentControlSet\Services\i8042prt\Parameters, LayerDriver JPN
+		; keyDriver: String型
 
 ; ----------------------------------------------------------------------
 ; 起動
 ; ----------------------------------------------------------------------
 
-Run, Notepad.exe, , , pid	; メモ帳を起動
-Sleep, 500
-WinActivate, ahk_pid %pid%	; アクティブ化
-Send, キー入力の時間差を計測します。他のウインドウでキーを押すと終了します。
+	Run, Notepad.exe, , , pid	; メモ帳を起動
+	Sleep, 500
+	WinActivate, ahk_pid %pid%	; アクティブ化
+	If (A_IsCompiled)
+	{
+		; 実行ファイル化されたスクリプトの場合は終了
+		Send, 実行ファイル化されているので終了します。
+		ExitApp
+	}
+	Send, キー入力の時間差を計測します。他のウインドウでキーを押すと終了します。
 
-exit	; 起動時はここまで実行
+Exit	; 起動時はここまで実行
 
 ; ----------------------------------------------------------------------
 ; タイマー関数、設定
 ; ----------------------------------------------------------------------
 
 ; 参照: https://www.autohotkey.com/boards/viewtopic.php?t=36016
-QPCInit() {
-	DllCall("QueryPerformanceFrequency", "Int64P", Freq)
-	return Freq
+QPCInit() {	; () -> Int64
+	DllCall("QueryPerformanceFrequency", "Int64P", freq)	; freq: Int64型
+	Return freq
 }
-QPC() {	; ミリ秒単位
-	static Coefficient := 1000.0 / QPCInit()
-	DllCall("QueryPerformanceCounter", "Int64P", Count)
-	Return Count * Coefficient
+QPC() {		; () -> Double	ミリ秒単位
+	static coefficient := 1000.0 / QPCInit()	; Double型
+	DllCall("QueryPerformanceCounter", "Int64P", count)	; count: Int64型
+	Return count * coefficient
 }
 
 ; ----------------------------------------------------------------------
@@ -96,75 +103,81 @@ QPC() {	; ミリ秒単位
 ; ----------------------------------------------------------------------
 
 SendTimer:
-;	global	InBufsKey, InBufsTime
-;	static	LastKeyTime, LastTerm
-;	local	Str, KeyTime, Term, diff, number, temp, BeginKeyTime
+;	local str, term, temp, lastTerm		; String型
+;		, keyTime, beginKeyTime			; Double型
+;		, number, count					; Int型
 
-	BeginKeyTime := InBufsTime[1]	; 一塊の入力の先頭の時間を保存
+	count := 0
+	beginKeyTime := inBufsTime[1]	; 一塊の入力の先頭の時間を保存
+;	Send, % "{Enter}(" . Round(beginKeyTime - lastKeyTime, 1) . "ms)"
+	lastTerm := " "
 
 	; 入力バッファが空になるまで
-	while (InBufsKey.Length())
+	While (inBufsKey.Length())
 	{
 		IfWinNotActive, ahk_pid %pid%
 			ExitApp		; 起動したメモ帳以外へは出力しないで終了
 
 		; 入力バッファから読み出し
-		Str := InBufsKey.RemoveAt(1), KeyTime := InBufsTime.RemoveAt(1)
+		str := inBufsKey.RemoveAt(1), keyTime := inBufsTime.RemoveAt(1)
 
 		; キーの上げ下げを調べる
-		StringRight, Term, Str, 3	; Term に入力末尾の2文字を入れる
-		if (Term = " up")	; キーが離されたとき
+		StringRight, term, str, 3	; term に入力末尾の2文字を入れる
+		If (term = " up")	; キーが離されたとき
 		{
-			Term := "↑"
-			Str := SubStr(Str, 1, StrLen(Str) - 3)
-			if (Term != LastTerm)
+			term := "↑"
+			str := SubStr(str, 1, StrLen(str) - 3)
+			If (term != lastTerm)
 				Send, % "{Enter}{Tab}{Tab}"
-			else
+			Else
 				Send, % "{Space}"
 		}
-		else
+		Else
 		{
-			Term := ""
-			if (Term != LastTerm)
+			count++
+			term := ""
+			If (term != lastTerm)
 				Send, % "{Enter}"	; キーの上げ下げが変わったら改行
-			else
+			Else
 				Send, % "{Space}"
 		}
 		; 前回の入力からの時間を書き出し
-		diff := round(KeyTime - LastKeyTime, 1)
-		Send, % "(" . diff . "ms) "
+		If (lastTerm != " ")
+			Send, % "(" . Round(keyTime - lastKeyTime, 1) . "ms) "
 		; 入力文字の書き出し
-		if (Str = "sc29" && KeyDriver != "kbd101.dll")
-			Str := "半角/全角"
-		else if (Str = "sc3A" && KeyDriver != "kbd101.dll")
-			Str := "英数"
-		else if (Str = "LWin")		; LWin を半角のまま出力すると、なぜか Win+L が発動する
-			Str := "ＬWin"
-		else if (Str = "vk1A")
-			Str := "(Mac)英数"
-		else if (Str = "vk16")
-			Str := "(Mac)かな"
-		else
+		If (str = "sc29" && keyDriver != "kbd101.dll")
+			str := "半角/全角"
+		Else If (str = "sc3A" && keyDriver != "kbd101.dll")
+			str := "英数"
+		Else If (str = "LWin")		; LWin を半角のまま出力すると、なぜか Win+L が発動する
+			str := "ＬWin"
+		Else If (str = "vk1A")
+			str := "(Mac)英数"
+		Else If (str = "vk16")
+			str := "(Mac)かな"
+		Else
 		{
-			if (SubStr(Str, 1, 2) = "sc")
+			If (SubStr(str, 1, 2) = "sc")
 			{
-				number := "0x" . SubStr(Str, 3, 2)
-				temp := SCArray[number]
-				if (temp != "")
-					Str := temp
+				number := "0x" . SubStr(str, 3, 2)
+				temp := scArray[number]
+				If (temp != "")
+					str := temp
 			}
 		}
 
-		Send, % Str . Term
+		Send, % str . term
 
-		LastKeyTime := KeyTime	; 押した時間を保存
-		LastTerm := Term		; キーの上げ下げを保存
+		lastKeyTime := keyTime	; 押した時間を保存
+		lastTerm := term		; キーの上げ下げを保存
 	}
 
 	; 一塊の入力時間合計を出力
-	Send, % "{Enter}" . "***** " . round(LastKeyTime - BeginKeyTime, 1) . "ms{Enter 2}"
+	Send, % "{Enter}***** "
+		. (count == 1 ? "One key" : count . " keys") . " pressed in "
+		. Round(lastKeyTime - beginKeyTime, 1) . "ms.{Enter 2}"
 
-	return
+	Return
 
 ; ----------------------------------------------------------------------
 ; ホットキー
@@ -509,10 +522,10 @@ Launch_Media up::		; vkB5 up::
 Launch_App1 up::		; vkB6 up::
 Launch_App2 up::		; vkB7 up::
 	; 入力バッファへ保存
-	InBufsKey.Push(A_ThisHotkey), InBufsTime.Push(QPC())
+	inBufsKey.Push(A_ThisHotkey), inBufsTime.Push(QPC())
 	IfWinNotActive, ahk_pid %pid%
 		ExitApp					; 起動したメモ帳以外への入力だったら終了
 	SetTimer, SendTimer, -1050	; キー変化なく1.05秒たったら表示
-	return
+	Return
 
 #MaxThreadsPerHotkey 1	; 元に戻す
