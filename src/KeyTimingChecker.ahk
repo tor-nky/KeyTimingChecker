@@ -105,25 +105,29 @@ QPC() {		; () -> Double	ミリ秒単位
 SendTimer:
 ;	local str, term, temp, lastTerm		; String型
 ;		, keyTime, beginKeyTime			; Double型
-;		, number, count					; Int型
+;		, number						; Int型
 
-	count := 0
-	beginKeyTime := inBufsTime[1]	; 一塊の入力の先頭の時間を保存
-;	Send, % "{Enter}(" . Round(beginKeyTime - lastKeyTime, 1) . "ms)"
+	; 変数の初期化
+	middle := 40		; Int型定数		この個数のキーを押したところまでの時間を出力させる
+	count := 0			; Int型
+	middleKeyTime :=	; Double?型
 	lastTerm := " "
+
+	; 一塊の入力の先頭の時間を保存
+	beginKeyTime := inBufsTime[1]
+	; 起動から、または前回表示からの経過時間表示
+;	Send, % "{Enter}(" . Round(beginKeyTime - lastKeyTime, 1) . "ms)"
 
 	; 入力バッファが空になるまで
 	While (inBufsKey.Length())
 	{
-		IfWinNotActive, ahk_pid %pid%
-			ExitApp		; 起動したメモ帳以外へは出力しないで終了
-
 		; 入力バッファから読み出し
 		str := inBufsKey.RemoveAt(1), keyTime := inBufsTime.RemoveAt(1)
 
 		; キーの上げ下げを調べる
 		StringRight, term, str, 3	; term に入力末尾の2文字を入れる
-		If (term = " up")	; キーが離されたとき
+		; キーが離されたとき
+		If (term = " up")
 		{
 			term := "↑"
 			str := SubStr(str, 1, StrLen(str) - 3)
@@ -135,6 +139,9 @@ SendTimer:
 		Else
 		{
 			count++
+			If (count == middle)
+				; 設定した個数のキーを押したので時間を保存
+				middleKeyTime := keyTime
 			term := ""
 			If (term != lastTerm)
 				Send, % "{Enter}"	; キーの上げ下げが変わったら改行
@@ -144,6 +151,7 @@ SendTimer:
 		; 前回の入力からの時間を書き出し
 		If (lastTerm != " ")
 			Send, % "(" . Round(keyTime - lastKeyTime, 1) . "ms) "
+
 		; 入力文字の書き出し
 		If (str = "sc29" && keyDriver != "kbd101.dll")
 			str := "半角/全角"
@@ -165,17 +173,22 @@ SendTimer:
 					str := temp
 			}
 		}
-
 		Send, % str . term
 
+		; 変数の更新
 		lastKeyTime := keyTime	; 押した時間を保存
 		lastTerm := term		; キーの上げ下げを保存
 	}
 
 	; 一塊の入力時間合計を出力
 	Send, % "{Enter}***** "
-		. (count == 1 ? "One key" : count . " keys") . " pressed in "
-		. Round(lastKeyTime - beginKeyTime, 1) . "ms.{Enter 2}"
+		. (count == 1 ? "1 key" : count . " keys") . " pressed in "
+		. Round(lastKeyTime - beginKeyTime, 1) . "ms."
+	; 設定した個数のキーを押したので時間を出力
+	If (middleKeyTime)
+		Send, % "{Enter}{Tab}(It took " . Round((middleKeyTime - beginKeyTime) / 1000, 3)
+			. " seconds to press the " . middle . "th key.)"
+	Send, {Enter 2}
 
 	Return
 
@@ -523,8 +536,12 @@ Launch_App1 up::		; vkB6 up::
 Launch_App2 up::		; vkB7 up::
 	; 入力バッファへ保存
 	inBufsKey.Push(A_ThisHotkey), inBufsTime.Push(QPC())
+	; 起動したメモ帳以外へは出力しないで終了
 	IfWinNotActive, ahk_pid %pid%
-		ExitApp					; 起動したメモ帳以外への入力だったら終了
+		ExitApp
+	; 「保存しますか?」などの表示窓には出力しないで終了
+	IfWinActive , ahk_class #32770
+		ExitApp
 	SetTimer, SendTimer, -1050	; キー変化なく1.05秒たったら表示
 	Return
 
