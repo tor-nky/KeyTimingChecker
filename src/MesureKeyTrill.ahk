@@ -32,7 +32,7 @@ SetKeyDelay, -1, -1			; キーストローク間のディレイを変更
 #MenuMaskKey vk07			; Win または Alt の押下解除時のイベントを隠蔽するためのキーを変更する
 #UseHook					; ホットキーはすべてフックを使用する
 ;Process, Priority, , High	; プロセスの優先度を変更
-Thread, interrupt, 15, 17	; スレッド開始から15ミリ秒ないし17行以内の割り込みを、絶対禁止
+Thread, interrupt, 15, 20	; スレッド開始から15ミリ秒ないし20行以内の割り込みを、絶対禁止
 ;SetStoreCapslockMode, off	; Sendコマンド実行時にCapsLockの状態を自動的に変更しない
 
 ;SetFormat, Integer, H		; 数値演算の結果を、16進数の整数による文字列で表現する
@@ -44,27 +44,21 @@ Thread, interrupt, 15, 17	; スレッド開始から15ミリ秒ないし17行以
 ; グローバル変数
 ; ----------------------------------------------------------------------
 
-middle := 40		; Int型定数		この個数のキーを押したところまでの時間も出力させる
+; 設定
+passCount := 40		; Int型定数		この個数のキーを押したところまでの時間も出力させる
 
 ; 入力バッファ
-inBufsKey := []		; [String]型
-inBufsTime := []	; [Double]型	入力の時間
+changedKeys := []	; [String]型
+changedTimes := []	; [Double]型	入力の時間
+pressedKeys := []	; [String]型
 
-scArray := ["Esc", "1", "2", "3", "4", "5", "6", "7", "8", "9", "Ø", "-", "{sc0D}", "BackSpace", "Tab"
-	, "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "{sc1A}", "{sc1B}", "", "", "A", "S"
-	, "D", "F", "G", "H", "J", "K", "L", "{sc27}", "{sc28}", "{sc29}", "LShift", "{sc2B}", "Z", "X", "C", "V"
-	, "B", "N", "M", ",", ".", "/", "", "", "", "Space", "CapsLock", "F1", "F2", "F3", "F4", "F5"
-	, "F6", "F7", "F8", "F9", "F10", "Pause", "ScrollLock", "", "", "", "", "", "", "", "", ""
-	, "", "", "", "", "SysRq", "", "KC_NUBS", "F11", "F12", "(Mac)=", "", "", "(NEC),", "", "", ""
-	, "", "", "", "", "F13", "F14", "F15", "F16", "F17", "F18", "F19", "F20", "F21", "F22", "F23", ""
-	, "(JIS)ひらがな", "(Mac)英数", "(Mac)かな", "(JIS)_", "", "", "F24", "KC_LANG4"
-	, "KC_LANG3", "(JIS)変換", "", "(JIS)無変換", "", "(JIS)￥", "(Mac),", ""]
-			; [String]型
-
-lastKeyTime := QPC()	; Double型
-lastKeyName :=			; String?型
-countTrill := 0			; Int型
-errorTrill := False		; Bool型
+repeatKeyCount := 0	; Int型
+trillCount := 0		; Int型
+trillError := False	; Bool型
+firstPressTime :=	; Double?型
+nowKeyTime := 0.0	; Double型
+lastKeyName :=		; String?型
+;clipSaved :=
 
 ; キーボードドライバを調べて keyDriver に格納する
 ; 参考: https://ixsvr.dyndns.org/blog/764
@@ -84,7 +78,10 @@ RegRead, keyDriver, HKEY_LOCAL_MACHINE, SYSTEM\CurrentControlSet\Services\i8042p
 		Send, 実行ファイル化されているので終了します。
 		ExitApp
 	}
-	Send, キー入力の時間差を計測します。他のウインドウでキーを押すと終了します。
+	clipSaved := ClipboardAll	; クリップボードの全内容を保存
+	OnExit, ExitSub	; スクリプト終了時に実行させたいサブルーチンを指定
+	Clipboard := "キー入力の時間差を計測します。他のウインドウでキーを押すと終了します。"
+	Send, ^v
 
 Exit	; 起動時はここまで実行
 
@@ -107,85 +104,178 @@ QPC() {		; () -> Double	ミリ秒単位
 ; サブルーチン
 ; ----------------------------------------------------------------------
 
-SendTimer:
-;	local str, temp, lastTerm		; String型
-;		, keyTime, beginKeyTime		; Double型
-;		, number					; Int型
+; スクリプト終了時に実行
+ExitSub:
+	Clipboard := clipSaved	; クリップボードの内容を復元
+	clipSaved :=			; 保存用変数に使ったメモリを解放
+	ExitApp
+
+OutputTimer:
+	Output()
+	; 変数のリセット
+	firstPressTime :=
+	pressedKeys := []
+	repeatKeyCount := 0
+	trillCount := 0
+	trillError := False
+	Return
+
+; ----------------------------------------------------------------------
+; 関数
+; ----------------------------------------------------------------------
+
+Output()	; () -> Double?
+{
+	global changedKeys, changedTimes, keyDriver, passCount, trillError
+	static scArray := ["Esc", "1", "2", "3", "4", "5", "6", "7", "8", "9", "Ø", "-", "{sc0D}", "BackSpace", "Tab"
+		, "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "{sc1A}", "{sc1B}", "", "", "A", "S"
+		, "D", "F", "G", "H", "J", "K", "L", "{sc27}", "{sc28}", "{sc29}", "LShift", "{sc2B}", "Z", "X", "C", "V"
+		, "B", "N", "M", ",", ".", "/", "", "", "", "Space", "CapsLock", "F1", "F2", "F3", "F4", "F5"
+		, "F6", "F7", "F8", "F9", "F10", "Pause", "ScrollLock", "", "", "", "", "", "", "", "", ""
+		, "", "", "", "", "SysRq", "", "KC_NUBS", "F11", "F12", "(Mac)=", "", "", "(NEC),", "", "", ""
+		, "", "", "", "", "F13", "F14", "F15", "F16", "F17", "F18", "F19", "F20", "F21", "F22", "F23", ""
+		, "(JIS)ひらがな", "(Mac)英数", "(Mac)かな", "(JIS)_", "", "", "F24", "KC_LANG4"
+		, "KC_LANG3", "(JIS)変換", "", "(JIS)無変換", "", "(JIS)￥", "(Mac),", ""]
+				; [String]型
+	static lastKeyTime := QPC()		; Double型
+;	local key, term, lastTerm, temp	; String型
+;		, outputString				; String型
+;		, keyTime, startTime		; Double型
+;		, firstPressTime, passTime	; Dount?型
+;		, pressKeyCount, releaseKeyCount, repeatKeyCount, 	; Int型
+;		, i, number, multiPress	; Int型
+;		, pressingKeys			; [String]型
 
 	; 変数の初期化
-	count := 0			; Int型
-	middleKeyTime :=	; Double?型
+	pressKeyCount := repeatKeyCount := releaseKeyCount := 0
+	multiPress := 0
+	firstPressTime :=
+	passTime :=
+	pressingKeys := []
 	lastTerm := " "
+	outputString :=
 
 	; 一塊の入力の先頭の時間を保存
-	beginKeyTime := inBufsTime[1]
+	startTime := changedTimes[1]
 	; 起動から、または前回表示からの経過時間表示
-;	Send, % "{Enter}(" . Round(beginKeyTime - lastKeyTime, 1) . "ms)"
+;	outputString .= "`n(" . Round(beginKeyTime - lastKeyTime, 1) . "ms)"
 
 	; 入力バッファが空になるまで
-	While (inBufsKey.Length())
+	While (changedKeys.Length())
 	{
 		; 入力バッファから読み出し
-		str := inBufsKey.RemoveAt(1), keyTime := inBufsTime.RemoveAt(1)
+		key := changedKeys.RemoveAt(1), keyTime := changedTimes.RemoveAt(1)
 
-		If (count == 0)
-			Send, % "{Enter}"
-		Else
-			; 前回の入力からの時間を書き出し
-			Send, % "{Space}(" . Round(keyTime - lastKeyTime, 1) . "ms) "
+		; キーの上げ下げを調べる
+		StringRight, term, key, 3	; term に入力末尾の2文字を入れる
+		; キーが離されたとき
+		If (term = " up")
+		{
+			StringTrimRight, key, key, 3
+			releaseKeyCount++
+			; ロールオーバー押し検出用 押しているキーを入れた配列から消す
+			i := 1
+			While (i <= pressingKeys.Length())
+			{
+				If (key = pressingKeys[i])
+				{
+					pressingKeys.RemoveAt(i)
+					Break
+				}
+				i++
+			}
 
-		; 入力文字の書き出し
-		If (str = "sc29" && keyDriver != "kbd101.dll")
-			str := "半角/全角"
-		Else If (str = "sc3A" && keyDriver != "kbd101.dll")
-			str := "英数"
-		Else If (str = "LWin")		; LWin を半角のまま出力すると、なぜか Win+L が発動する
-			str := "ＬWin"
-		Else If (str = "vk1A")
-			str := "(Mac)英数"
-		Else If (str = "vk16")
-			str := "(Mac)かな"
+			term := "↑"
+			If (term != lastTerm)
+				outputString .= "`n`t`t"
+			Else
+				outputString .= " "
+		}
 		Else
 		{
-			If (SubStr(str, 1, 2) = "sc")
+			If (!firstPressTime)
+				firstPressTime := keyTime
+			; キーリピートでないキーを数える
+			If (key != pressingKeys[pressingKeys.Length()])
+				pressKeyCount++
+			Else
+				repeatKeyCount++
+			; ロールオーバー押し検出 押しているキーを入れた配列と比べる
+			i := 1
+			While (i <= pressingKeys.Length())
 			{
-				number := "0x" . SubStr(str, 3, 2)
+				If (key = pressingKeys[i])
+					Break
+				i++
+			}
+			If (i > pressingKeys.Length())
+			{
+				; 配列に追加
+				pressingKeys.Push(key)
+				; 同時押し数更新
+				If (i > multiPress)
+					multiPress := i
+			}
+
+			; 設定した個数なら時間を保存
+			If (!trillError && !repeatKeyCount && pressKeyCount == passCount)
+				passTime := keyTime
+
+			term := ""
+			If (term != lastTerm)
+				outputString .= "`n"	; キーの上げ下げが変わったら改行
+			Else
+				outputString .= " "
+		}
+		; 前回の入力からの時間を書き出し
+		If (lastTerm != " ")
+			outputString .= "(" . Round(keyTime - lastKeyTime, 1) . "ms) "
+
+		; 入力文字の書き出し
+		If (key = "sc29" && keyDriver != "kbd101.dll")
+			key := "半角/全角"
+		Else If (key = "sc3A" && keyDriver != "kbd101.dll")
+			key := "英数"
+		Else If (key = "LWin")		; LWin を半角のまま出力すると、なぜか Win+L が発動する
+			key := "ＬWin"
+		Else If (key = "vk1A")
+			key := "(Mac)英数"
+		Else If (key = "vk16")
+			key := "(Mac)かな"
+		Else
+		{
+			If (SubStr(key, 1, 2) = "sc")
+			{
+				number := "0x" . SubStr(key, 3, 2)
 				temp := scArray[number]
 				If (temp != "")
-					str := temp
+					key := temp
 			}
 		}
-		Send, % str
+		outputString .= key . term
 
 		; 変数の更新
 		lastKeyTime := keyTime	; 押した時間を保存
-		; 設定した個数のキーを押したところで時間を保存
-		If (++count == middle)
-			middleKeyTime := keyTime
+		lastTerm := term		; キーの上げ下げを保存
 	}
 
 	; 一塊の入力時間合計を出力
-	If (count == 1)
-		Send, {Enter}***** 1 key pressed.
-	Else
-		Send, % "{Enter}***** "
-			. count . " keys pressed in "
-			. Round(lastKeyTime - beginKeyTime, 1) . "ms."
-	; 設定した個数のキーを押したので時間を出力
-	If (middleKeyTime)
-		Send, % "{Enter}{Tab}(It took " . Round((middleKeyTime - beginKeyTime) / 1000, 3)
-			. " seconds to press the " . middle . "th key.)"
-	; 繰り返しパターンが乱れていた(判定は前もって)
-	If (errorTrill)
-		Send, {Enter}繰り返しが乱れました。
-	Send, {Enter 2}
-
-	; 変数のリセット
-	countTrill := 0
-	errorTrill := False
+	outputString .= "`n***** キー変化 " . pressKeyCount + repeatKeyCount + releaseKeyCount
+		. " 回で " . Round(keyTime - startTime, 1) . "ms。`n`t("
+		. pressKeyCount . " 個押し + " . repeatKeyCount . " 個キーリピート + " . releaseKeyCount . " 個離す)"
+	If (trillError)
+		outputString .= "`n`t繰り返しが乱れました。"
+	If (passTime)
+		outputString .= "`n`t" . passCount . " 個目を押すまでに "
+			. Round((passTime - firstPressTime) / 1000, 3) . " 秒。"
+	If (multiPress > 1)
+		outputString .= "`n`t同時押し 最高 " . multiPress . " キー。"
+	outputString .= "`n`n"
+	Clipboard := outputString
+	Send, ^v
 
 	Return
-
+}
 
 ; ----------------------------------------------------------------------
 ; ホットキー
@@ -363,7 +453,11 @@ Launch_Media::		; vkB5::
 Launch_App1::		; vkB6::
 Launch_App2::		; vkB7::
 	; 入力バッファへ保存
-	inBufsKey.Push(nowKeyName := A_ThisHotkey), inBufsTime.Push(QPC())
+	changedKeys.Push(nowKeyName := A_ThisHotkey), changedTimes.Push(nowKeyTime := QPC())
+	pressedKeys.Push(nowKeyName)
+	If (!firstPressTime)
+		firstPressTime := nowKeyTime
+
 	; 起動したメモ帳以外へは出力しないで終了
 	IfWinNotActive, ahk_pid %pid%
 		ExitApp
@@ -371,37 +465,39 @@ Launch_App2::		; vkB7::
 	IfWinActive , ahk_class #32770
 		ExitApp
 	; キー変化なく1.05秒たったら表示
-	SetTimer, SendTimer, -1050
+	SetTimer, OutputTimer, -1050
 
-	; キーリピートは保存を取り消し
+	; キーリピート検出
 	If (nowKeyName == lastKeyName)
-		inBufsKey.Pop(), inBufsTime.Pop()
+		repeatKeyCount++
 	; 繰り返しパターンの判定 1文字目
-	Else If (!countTrill)
-		countTrill--
+	If (!trillCount)
+		trillCount--	; 1周目は負数でカウント
 	; 繰り返しパターン 1周目2文字目以降
-	Else If (countTrill < 0)
+	Else If (trillCount < 0)
 	{
 		; 1文字目と同じになるまでカウントする
-		If (inBufsKey[1] != nowKeyName)
-			countTrill--
+		If (pressedKeys[1] != nowKeyName)
+			trillCount--
 		; 2周目に入った
 		Else
-			countTrill := - countTrill
+			trillCount := - trillCount	; 正数に直す
 	}
-	; 繰り返しが乱れたか
-	Else If (!errorTrill && inBufsKey[inBufsKey.Length() - countTrill] != nowKeyName)
+	; 繰り返しパターン 2周目以降 繰り返しが乱れたか
+	Else If (!trillError && pressedKeys[pressedKeys.Length() - trillCount] != nowKeyName)
 	{
-		errorTrill := True
-		If (inBufsKey.Length() < middle)
+		trillError := True
+		If (pressedKeys.Length() < passCount)
 			TrayTip, , 繰り返しが乱れました
 	}
 
 	; 変数の更新
 	lastKeyName := nowKeyName
 	; 設定の個数に達した
-	If (!errorTrill && inBufsKey.Length() == middle)
-		TrayTip, , %middle%個押しました
+	If (!trillError && !repeatKeyCount && pressedKeys.Length() == passCount)
+		TrayTip, , % passCount . " 個目を押すまでに "
+			. Round((nowKeyTime - firstPressTime) / 1000, 3)
+			. " 秒"
 	Return
 
 
@@ -570,8 +666,17 @@ Launch_Mail up::		; vkB4 up::
 Launch_Media up::		; vkB5 up::
 Launch_App1 up::		; vkB6 up::
 Launch_App2 up::		; vkB7 up::
-	SetTimer, SendTimer, -1050	; キー変化なく1.05秒たったら表示
-	lastKeyName :=
+	; 入力バッファへ保存
+	changedKeys.Push(A_ThisHotkey), changedTimes.Push(QPC())
+	; 起動したメモ帳以外へは出力しないで終了
+	IfWinNotActive, ahk_pid %pid%
+		ExitApp
+	; 「保存しますか?」などの表示窓には出力しないで終了
+	IfWinActive , ahk_class #32770
+		ExitApp
+	SetTimer, OutputTimer, -1050	; キー変化なく1.05秒たったら表示
+	If (A_ThisHotkey = nowKeyName . " up")
+		lastKeyName :=
 	Return
 
 #MaxThreadsPerHotkey 1	; 元に戻す
