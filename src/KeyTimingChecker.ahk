@@ -160,8 +160,9 @@ Output()	; () -> Double?
 	firstPressTime :=
 	passTime :=
 	pressingKeys := []
-	lastPostKeyName := ""
 	outputString :=
+	; 起動から、または前回表示からの経過時間表示が不要なら次の初期値は "" とする
+	lastPostKeyName := " "
 
 	; 一塊の入力の先頭の時間を保存
 	startTime := changedTimes[1]
@@ -241,7 +242,7 @@ Output()	; () -> Double?
 				outputString .= " "
 		}
 		; 前回の入力からの時間を書き出し
-		If (lastPostKeyName != " ")
+		If (lastPostKeyName != "")
 			outputString .= "(" . Round(keyTime - lastKeyTime, 1) . "ms) "
 
 		; 入力文字の書き出し
