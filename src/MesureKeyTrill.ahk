@@ -57,6 +57,7 @@ trillCount := 0		; Int型
 trillError := False	; Bool型
 firstPressTime :=	; Double?型
 nowKeyTime := 0.0	; Double型
+;nowKeyName			; String型
 lastKeyName :=		; String?型
 ;clipSaved :=
 
@@ -64,6 +65,29 @@ lastKeyName :=		; String?型
 ; 参考: https://ixsvr.dyndns.org/blog/764
 RegRead, keyDriver, HKEY_LOCAL_MACHINE, SYSTEM\CurrentControlSet\Services\i8042prt\Parameters, LayerDriver JPN
 		; keyDriver: String型
+
+If (keyDriver = "kbd101.dll")
+	scArray := ["Esc", "1", "2", "3", "4", "5", "6", "7", "8", "9", "Ø", "-", "=", "BackSpace", "Tab"
+		, "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "[", "]", "", "", "A", "S"
+		, "D", "F", "G", "H", "J", "K", "L", ";", "'", "`", "LShift", "＼", "Z", "X", "C", "V"
+		, "B", "N", "M", ",", ".", "/", "", "", "", "Space", "CapsLock", "F1", "F2", "F3", "F4", "F5"
+		, "F6", "F7", "F8", "F9", "F10", "Pause", "ScrollLock", "", "", "", "", "", "", "", "", ""
+		, "", "", "", "", "SysRq", "", "KC_NUBS", "F11", "F12", "(Mac)=", "", "", "(NEC),", "", "", ""
+		, "", "", "", "", "F13", "F14", "F15", "F16", "F17", "F18", "F19", "F20", "F21", "F22", "F23", ""
+		, "(JIS)ひらがな", "(Mac)英数", "(Mac)かな", "(JIS)_", "", "", "F24", "KC_LANG4"
+		, "KC_LANG3", "(JIS)変換", "", "(JIS)無変換", "", "(JIS)￥", "(Mac),", ""]
+				; [String]型
+Else
+	scArray := ["Esc", "1", "2", "3", "4", "5", "6", "7", "8", "9", "Ø", "-", "^", "BackSpace", "Tab"
+		, "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "@", "[", "", "", "A", "S"
+		, "D", "F", "G", "H", "J", "K", "L", ";", ":", "半角/全角", "LShift", "]", "Z", "X", "C", "V"
+		, "B", "N", "M", ",", ".", "/", "", "", "", "Space", "英数", "F1", "F2", "F3", "F4", "F5"
+		, "F6", "F7", "F8", "F9", "F10", "Pause", "ScrollLock", "", "", "", "", "", "", "", "", ""
+		, "", "", "", "", "SysRq", "", "KC_NUBS", "F11", "F12", "(Mac)=", "", "", "(NEC),", "", "", ""
+		, "", "", "", "", "F13", "F14", "F15", "F16", "F17", "F18", "F19", "F20", "F21", "F22", "F23", ""
+		, "(JIS)ひらがな", "(Mac)英数", "(Mac)かな", "(JIS)_", "", "", "F24", "KC_LANG4"
+		, "KC_LANG3", "(JIS)変換", "", "(JIS)無変換", "", "(JIS)￥", "(Mac),", ""]
+				; [String]型
 
 ; ----------------------------------------------------------------------
 ; 起動
@@ -126,25 +150,15 @@ OutputTimer:
 
 Output()	; () -> Double?
 {
-	global changedKeys, changedTimes, keyDriver, passCount, trillError
-	static scArray := ["Esc", "1", "2", "3", "4", "5", "6", "7", "8", "9", "Ø", "-", "{sc0D}", "BackSpace", "Tab"
-		, "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "{sc1A}", "{sc1B}", "", "", "A", "S"
-		, "D", "F", "G", "H", "J", "K", "L", "{sc27}", "{sc28}", "{sc29}", "LShift", "{sc2B}", "Z", "X", "C", "V"
-		, "B", "N", "M", ",", ".", "/", "", "", "", "Space", "CapsLock", "F1", "F2", "F3", "F4", "F5"
-		, "F6", "F7", "F8", "F9", "F10", "Pause", "ScrollLock", "", "", "", "", "", "", "", "", ""
-		, "", "", "", "", "SysRq", "", "KC_NUBS", "F11", "F12", "(Mac)=", "", "", "(NEC),", "", "", ""
-		, "", "", "", "", "F13", "F14", "F15", "F16", "F17", "F18", "F19", "F20", "F21", "F22", "F23", ""
-		, "(JIS)ひらがな", "(Mac)英数", "(Mac)かな", "(JIS)_", "", "", "F24", "KC_LANG4"
-		, "KC_LANG3", "(JIS)変換", "", "(JIS)無変換", "", "(JIS)￥", "(Mac),", ""]
-				; [String]型
+	global changedKeys, changedTimes, scArray, passCount, trillError
 	static lastKeyTime := QPC()		; Double型
-;	local key, term, lastTerm, temp	; String型
-;		, outputString				; String型
-;		, keyTime, startTime		; Double型
-;		, firstPressTime, passTime	; Dount?型
+;	local keyName, postKeyName, lastPostKeyName, temp		; String型
+;		, outputString										; String型
+;		, keyTime, startTime								; Double型
+;		, firstPressTime, passTime							; Dount?型
 ;		, pressKeyCount, releaseKeyCount, repeatKeyCount, 	; Int型
-;		, i, number, multiPress	; Int型
-;		, pressingKeys			; [String]型
+;		, i, number, multiPress		; Int型
+;		, pressingKeys				; [String]型
 
 	; 変数の初期化
 	pressKeyCount := repeatKeyCount := releaseKeyCount := 0
@@ -152,7 +166,7 @@ Output()	; () -> Double?
 	firstPressTime :=
 	passTime :=
 	pressingKeys := []
-	lastTerm := " "
+	lastPostKeyName := ""
 	outputString :=
 
 	; 一塊の入力の先頭の時間を保存
@@ -164,20 +178,20 @@ Output()	; () -> Double?
 	While (changedKeys.Length())
 	{
 		; 入力バッファから読み出し
-		key := changedKeys.RemoveAt(1), keyTime := changedTimes.RemoveAt(1)
+		keyName := changedKeys.RemoveAt(1), keyTime := changedTimes.RemoveAt(1)
 
 		; キーの上げ下げを調べる
-		StringRight, term, key, 3	; term に入力末尾の2文字を入れる
+		StringRight, postKeyName, keyName, 3	; postKeyName に入力末尾の2文字を入れる
 		; キーが離されたとき
-		If (term = " up")
+		If (postKeyName = " up")
 		{
-			StringTrimRight, key, key, 3
+			StringTrimRight, keyName, keyName, 3
 			releaseKeyCount++
 			; ロールオーバー押し検出用 押しているキーを入れた配列から消す
 			i := 1
 			While (i <= pressingKeys.Length())
 			{
-				If (key = pressingKeys[i])
+				If (keyName = pressingKeys[i])
 				{
 					pressingKeys.RemoveAt(i)
 					Break
@@ -185,8 +199,8 @@ Output()	; () -> Double?
 				i++
 			}
 
-			term := "↑"
-			If (term != lastTerm)
+			preKeyName := "", postKeyName := "↑"
+			If (lastPostKeyName != postKeyName)
 				outputString .= "`n`t`t"
 			Else
 				outputString .= " "
@@ -196,22 +210,28 @@ Output()	; () -> Double?
 			If (!firstPressTime)
 				firstPressTime := keyTime
 			; キーリピートでないキーを数える
-			If (key != pressingKeys[pressingKeys.Length()])
+			If (keyName != pressingKeys[pressingKeys.Length()])
+			{
 				pressKeyCount++
+				preKeyName := "", postKeyName := "↓"
+			}
 			Else
+			{
 				repeatKeyCount++
+				preKeyName := "<", postKeyName := ">"
+			}
 			; ロールオーバー押し検出 押しているキーを入れた配列と比べる
 			i := 1
 			While (i <= pressingKeys.Length())
 			{
-				If (key = pressingKeys[i])
+				If (keyName = pressingKeys[i])
 					Break
 				i++
 			}
 			If (i > pressingKeys.Length())
 			{
 				; 配列に追加
-				pressingKeys.Push(key)
+				pressingKeys.Push(keyName)
 				; 同時押し数更新
 				If (i > multiPress)
 					multiPress := i
@@ -221,42 +241,37 @@ Output()	; () -> Double?
 			If (!trillError && !repeatKeyCount && pressKeyCount == passCount)
 				passTime := keyTime
 
-			term := ""
-			If (term != lastTerm)
+			If (lastPostKeyName != "↓" && lastPostKeyName != ">")
 				outputString .= "`n"	; キーの上げ下げが変わったら改行
 			Else
 				outputString .= " "
 		}
 		; 前回の入力からの時間を書き出し
-		If (lastTerm != " ")
+		If (lastPostKeyName != " ")
 			outputString .= "(" . Round(keyTime - lastKeyTime, 1) . "ms) "
 
 		; 入力文字の書き出し
-		If (key = "sc29" && keyDriver != "kbd101.dll")
-			key := "半角/全角"
-		Else If (key = "sc3A" && keyDriver != "kbd101.dll")
-			key := "英数"
-		Else If (key = "LWin")		; LWin を半角のまま出力すると、なぜか Win+L が発動する
-			key := "ＬWin"
-		Else If (key = "vk1A")
-			key := "(Mac)英数"
-		Else If (key = "vk16")
-			key := "(Mac)かな"
+		If (keyName = "LWin")		; LWin を半角のまま出力すると、なぜか Win+L が発動する
+			keyName := "ＬWin"
+		Else If (keyName = "vk1A")
+			keyName := "(Mac)英数"
+		Else If (keyName = "vk16")
+			keyName := "(Mac)かな"
 		Else
 		{
-			If (SubStr(key, 1, 2) = "sc")
+			If (SubStr(keyName, 1, 2) = "sc")
 			{
-				number := "0x" . SubStr(key, 3, 2)
+				number := "0x" . SubStr(keyName, 3, 2)
 				temp := scArray[number]
 				If (temp != "")
-					key := temp
+					keyName := temp
 			}
 		}
-		outputString .= key . term
+		outputString .= preKeyName . keyName . postKeyName
 
 		; 変数の更新
 		lastKeyTime := keyTime	; 押した時間を保存
-		lastTerm := term		; キーの上げ下げを保存
+		lastPostKeyName := postKeyName		; キーの上げ下げを保存
 	}
 
 	; 一塊の入力時間合計を出力
