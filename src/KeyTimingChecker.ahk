@@ -32,7 +32,7 @@ SetKeyDelay, -1, -1			; キーストローク間のディレイを変更
 #MenuMaskKey vk07			; Win または Alt の押下解除時のイベントを隠蔽するためのキーを変更する
 #UseHook					; ホットキーはすべてフックを使用する
 ;Process, Priority, , High	; プロセスの優先度を変更
-Thread, interrupt, 15, 13	; スレッド開始から15ミリ秒ないし13行以内の割り込みを、絶対禁止
+Thread, interrupt, 15, 6	; スレッド開始から15ミリ秒ないし6行以内の割り込みを、絶対禁止
 ;SetStoreCapslockMode, off	; Sendコマンド実行時にCapsLockの状態を自動的に変更しない
 
 ;SetFormat, Integer, H		; 数値演算の結果を、16進数の整数による文字列で表現する
@@ -44,16 +44,10 @@ Thread, interrupt, 15, 13	; スレッド開始から15ミリ秒ないし13行以
 ; グローバル変数
 ; ----------------------------------------------------------------------
 
-; 設定
-passCount := 40		; Int型定数		この個数のキーを押したところまでの時間も出力させる
-
 ; 入力バッファ
 changedKeys := []	; [String]型
 changedTimes := []	; [Double]型	入力の時間
-pressedKeys := []	; [String]型
 
-trillCount := 0		; Int型
-trillError := False	; Bool型
 ;nowKeyName			; String型
 ;clipSaved :=
 
@@ -132,10 +126,6 @@ ExitSub:
 
 OutputTimer:
 	Output()
-	; 変数のリセット
-	pressedKeys := []
-	trillCount := 0
-	trillError := False
 	Return
 
 ; ----------------------------------------------------------------------
@@ -144,21 +134,25 @@ OutputTimer:
 
 Output()	; () -> Double?
 {
-	global changedKeys, changedTimes, scArray, passCount, trillError
+	global pid, changedKeys, changedTimes, scArray
 	static lastKeyTime := QPC()		; Double型
 ;	local keyName, postKeyName, lastPostKeyName, temp		; String型
 ;		, outputString										; String型
 ;		, keyTime, startTime								; Double型
-;		, firstPressTime, passTime							; Dount?型
 ;		, pressKeyCount, releaseKeyCount, repeatKeyCount, 	; Int型
 ;		, i, number, multiPress		; Int型
 ;		, pressingKeys				; [String]型
 
+	; 起動したメモ帳以外へは出力しないで終了
+	IfWinNotActive, ahk_pid %pid%
+		ExitApp
+	; 「保存しますか?」などの表示窓には出力しないで終了
+	IfWinActive , ahk_class #32770
+		ExitApp
+
 	; 変数の初期化
 	pressKeyCount := repeatKeyCount := releaseKeyCount := 0
 	multiPress := 0
-	firstPressTime :=
-	passTime :=
 	pressingKeys := []
 	outputString :=
 	; 起動から、または前回表示からの経過時間表示が不要なら次の初期値は "" とする
@@ -200,8 +194,6 @@ Output()	; () -> Double?
 		}
 		Else
 		{
-			If (!firstPressTime)
-				firstPressTime := keyTime
 			; キーリピートでないキーを数える
 			If (keyName != pressingKeys[pressingKeys.Length()])
 			{
@@ -229,10 +221,6 @@ Output()	; () -> Double?
 				If (i > multiPress)
 					multiPress := i
 			}
-
-			; 設定した個数なら時間を保存
-			If (!trillError && !repeatKeyCount && pressKeyCount == passCount)
-				passTime := keyTime
 
 			If (lastPostKeyName != "↓" && lastPostKeyName != ">")
 				outputString .= "`n"	; キーの上げ下げが変わったら改行
@@ -273,11 +261,6 @@ Output()	; () -> Double?
 		. pressKeyCount . " 個押し + " . repeatKeyCount . " 個キーリピート + " . releaseKeyCount . " 個離す)`n"
 	If (multiPress > 1)
 		outputString .= "`t同時押し 最高 " . multiPress . " キー。`n"
-	If (passTime)
-		outputString .= "`t" . passCount . " 個目を押すまでに "
-			. Round((passTime - firstPressTime) / 1000, 3) . " 秒。`n"
-	If (trillError)
-		outputString .= "`t繰り返しが乱れました。`n"
 	outputString .= "`n"
 	Clipboard := outputString
 	Send, ^v
@@ -462,33 +445,8 @@ Launch_App1::		; vkB6::
 Launch_App2::		; vkB7::
 	; 入力バッファへ保存
 	changedKeys.Push(nowKeyName := A_ThisHotkey), changedTimes.Push(QPC())
-	pressedKeys.Push(nowKeyName)
-	; 起動したメモ帳以外へは出力しないで終了
-	IfWinNotActive, ahk_pid %pid%
-		ExitApp
-	; 「保存しますか?」などの表示窓には出力しないで終了
-	IfWinActive , ahk_class #32770
-		ExitApp
 	; キー変化なく1.05秒たったら表示
 	SetTimer, OutputTimer, -1050
-
-	; 繰り返しパターンの判定 1文字目
-	If (!trillCount)
-		trillCount--	; 1周目は負数でカウント
-	; 繰り返しパターン 1周目2文字目以降
-	Else If (trillCount < 0)
-	{
-		; 1文字目と同じになるまでカウントする
-		If (pressedKeys[1] != nowKeyName)
-			trillCount--
-		; 2周目に入った
-		Else
-			trillCount := - trillCount	; 正数に直す
-	}
-	; 繰り返しパターン 2周目以降 繰り返しが乱れたか
-	Else If (!trillError && pressedKeys[pressedKeys.Length() - trillCount] != nowKeyName)
-		trillError := True
-
 	Return
 
 
@@ -659,12 +617,6 @@ Launch_App1 up::		; vkB6 up::
 Launch_App2 up::		; vkB7 up::
 	; 入力バッファへ保存
 	changedKeys.Push(A_ThisHotkey), changedTimes.Push(QPC())
-	; 起動したメモ帳以外へは出力しないで終了
-	IfWinNotActive, ahk_pid %pid%
-		ExitApp
-	; 「保存しますか?」などの表示窓には出力しないで終了
-	IfWinActive , ahk_class #32770
-		ExitApp
 	SetTimer, OutputTimer, -1050	; キー変化なく1.05秒たったら表示
 	Return
 
