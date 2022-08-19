@@ -166,8 +166,6 @@ Output()	; () -> Double?
 
 	; 一塊の入力の先頭の時間を保存
 	startTime := changedTimes[1]
-	; 起動から、または前回表示からの経過時間表示
-;	outputString .= "`n(" . Round(beginKeyTime - lastKeyTime, 1) . "ms)"
 
 	; 入力バッファが空になるまで
 	While (changedKeys.Length())
@@ -196,7 +194,7 @@ Output()	; () -> Double?
 
 			preKeyName := "", postKeyName := "↑"
 			If (lastPostKeyName != postKeyName)
-				outputString .= "`n`t`t"
+				outputString .= "`n`t`t"	; キーの上げ下げが変わったら改行と字下げ
 			Else
 				outputString .= " "
 		}
@@ -272,15 +270,15 @@ Output()	; () -> Double?
 	; 一塊の入力時間合計を出力
 	outputString .= "`n***** キー変化 " . pressKeyCount + repeatKeyCount + releaseKeyCount
 		. " 回で " . Round(keyTime - startTime, 1) . "ms。`n`t("
-		. pressKeyCount . " 個押し + " . repeatKeyCount . " 個キーリピート + " . releaseKeyCount . " 個離す)"
-	If (trillError)
-		outputString .= "`n`t繰り返しが乱れました。"
-	If (passTime)
-		outputString .= "`n`t" . passCount . " 個目を押すまでに "
-			. Round((passTime - firstPressTime) / 1000, 3) . " 秒。"
+		. pressKeyCount . " 個押し + " . repeatKeyCount . " 個キーリピート + " . releaseKeyCount . " 個離す)`n"
 	If (multiPress > 1)
-		outputString .= "`n`t同時押し 最高 " . multiPress . " キー。"
-	outputString .= "`n`n"
+		outputString .= "`t同時押し 最高 " . multiPress . " キー。`n"
+	If (passTime)
+		outputString .= "`t" . passCount . " 個目を押すまでに "
+			. Round((passTime - firstPressTime) / 1000, 3) . " 秒。`n"
+	If (trillError)
+		outputString .= "`t繰り返しが乱れました。`n"
+	outputString .= "`n"
 	Clipboard := outputString
 	Send, ^v
 

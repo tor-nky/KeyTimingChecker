@@ -200,7 +200,7 @@ Output()	; () -> Double?
 
 			preKeyName := "", postKeyName := "↑"
 			If (lastPostKeyName != postKeyName)
-				outputString .= "`n`t`t"
+				outputString .= "`n`t`t"	; キーの上げ下げが変わったら改行と字下げ
 			Else
 				outputString .= " "
 		}
@@ -276,15 +276,15 @@ Output()	; () -> Double?
 	; 一塊の入力時間合計を出力
 	outputString .= "`n***** キー変化 " . pressKeyCount + repeatKeyCount + releaseKeyCount
 		. " 回で " . Round(keyTime - startTime, 1) . "ms。`n`t("
-		. pressKeyCount . " 個押し + " . repeatKeyCount . " 個キーリピート + " . releaseKeyCount . " 個離す)"
-	If (trillError)
-		outputString .= "`n`t繰り返しが乱れました。"
-	If (passTime)
-		outputString .= "`n`t" . passCount . " 個目を押すまでに "
-			. Round((passTime - firstPressTime) / 1000, 3) . " 秒。"
+		. pressKeyCount . " 個押し + " . repeatKeyCount . " 個キーリピート + " . releaseKeyCount . " 個離す)`n"
 	If (multiPress > 1)
-		outputString .= "`n`t同時押し 最高 " . multiPress . " キー。"
-	outputString .= "`n`n"
+		outputString .= "`t同時押し 最高 " . multiPress . " キー。`n"
+	If (passTime)
+		outputString .= "`t" . passCount . " 個目を押すまでに "
+			. Round((passTime - firstPressTime) / 1000, 3) . " 秒。`n"
+	If (trillError)
+		outputString .= "`t繰り返しが乱れました。`n"
+	outputString .= "`n"
 	Clipboard := outputString
 	Send, ^v
 
@@ -480,10 +480,10 @@ Launch_App2::		; vkB7::
 		ExitApp
 	; キー変化なく1.05秒たったら表示
 	SetTimer, OutputTimer, -1050
-
 	; キーリピート検出
 	If (nowKeyName == lastKeyName)
 		repeatKeyCount++
+
 	; 繰り返しパターンの判定 1文字目
 	If (!trillCount)
 		trillCount--	; 1周目は負数でカウント
@@ -505,13 +505,13 @@ Launch_App2::		; vkB7::
 			TrayTip, , 繰り返しが乱れました
 	}
 
-	; 変数の更新
-	lastKeyName := nowKeyName
 	; 設定の個数に達した
 	If (!trillError && !repeatKeyCount && pressedKeys.Length() == passCount)
 		TrayTip, , % passCount . " 個目を押すまでに "
 			. Round((nowKeyTime - firstPressTime) / 1000, 3)
 			. " 秒"
+	; 変数の更新
+	lastKeyName := nowKeyName
 	Return
 
 
