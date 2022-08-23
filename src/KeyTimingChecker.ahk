@@ -32,7 +32,7 @@ SetKeyDelay, -1, -1			; キーストローク間のディレイを変更
 #MenuMaskKey vk07			; Win または Alt の押下解除時のイベントを隠蔽するためのキーを変更する
 #UseHook					; ホットキーはすべてフックを使用する
 ;Process, Priority, , High	; プロセスの優先度を変更
-Thread, interrupt, 15, 6	; スレッド開始から15ミリ秒ないし6行以内の割り込みを、絶対禁止
+Thread, interrupt, 15, 5	; スレッド開始から15ミリ秒ないし5行以内の割り込みを、絶対禁止
 ;SetStoreCapslockMode, off	; Sendコマンド実行時にCapsLockの状態を自動的に変更しない
 
 ;SetFormat, Integer, H		; 数値演算の結果を、16進数の整数による文字列で表現する
@@ -46,10 +46,10 @@ Thread, interrupt, 15, 6	; スレッド開始から15ミリ秒ないし6行以�
 
 ; 入力バッファ
 changedKeys := []	; [String]型
-changedTimes := []	; [Double]型	入力の時間
-
-;nowKeyName			; String型
-;clipSaved :=
+changeCounter := []	; [Int64]型		入力の時間
+; count				; Int64型
+; nowKeyName		; String型
+; clipSaved :=
 
 ; キーボードドライバを調べて keyDriver に格納する
 ; 参考: https://ixsvr.dyndns.org/blog/764
@@ -136,7 +136,8 @@ OutputTimer:
 
 Output()	; () -> Double?
 {
-	global pid, changedKeys, changedTimes, scArray
+	global pid, changedKeys, changeCounter, scArray
+	static coefficient := 1000.0 / QPCInit()	; Double型
 	static lastKeyTime := QPC()		; Double型
 ;	local keyName, postKeyName, lastPostKeyName, temp		; String型
 ;		, outputString										; String型
@@ -161,13 +162,13 @@ Output()	; () -> Double?
 	lastPostKeyName := " "
 
 	; 一塊の入力の先頭の時間を保存
-	startTime := changedTimes[1]
+	startTime := changeCounter[1] * coefficient
 
 	; 入力バッファが空になるまで
 	While (changedKeys.Length())
 	{
 		; 入力バッファから読み出し
-		keyName := changedKeys.RemoveAt(1), keyTime := changedTimes.RemoveAt(1)
+		keyName := changedKeys.RemoveAt(1), keyTime := changeCounter.RemoveAt(1) * coefficient
 
 		; キーの上げ下げを調べる
 		StringRight, postKeyName, keyName, 3	; postKeyName に入力末尾の2文字を入れる
@@ -234,9 +235,7 @@ Output()	; () -> Double?
 			outputString .= "(" . Round(keyTime - lastKeyTime, 1) . "ms) "
 
 		; 入力文字の書き出し
-		If (keyName = "LWin")		; LWin を半角のまま出力すると、なぜか Win+L が発動する
-			keyName := "ＬWin"
-		Else If (keyName = "vk1A")
+		If (keyName = "vk1A")
 			keyName := "(Mac)英数"
 		Else If (keyName = "vk16")
 			keyName := "(Mac)かな"
@@ -445,11 +444,6 @@ Launch_Mail::		; vkB4::
 Launch_Media::		; vkB5::
 Launch_App1::		; vkB6::
 Launch_App2::		; vkB7::
-	; 入力バッファへ保存
-	changedKeys.Push(nowKeyName := A_ThisHotkey), changedTimes.Push(QPC())
-	; キー変化なく1.05秒たったら表示
-	SetTimer, OutputTimer, -1050
-	Return
 
 
 ; キー押上げ
@@ -618,8 +612,11 @@ Launch_Media up::		; vkB5 up::
 Launch_App1 up::		; vkB6 up::
 Launch_App2 up::		; vkB7 up::
 	; 入力バッファへ保存
-	changedKeys.Push(A_ThisHotkey), changedTimes.Push(QPC())
-	SetTimer, OutputTimer, -1050	; キー変化なく1.05秒たったら表示
+	changedKeys.Push(nowKeyName := A_ThisHotkey)
+	DllCall("QueryPerformanceCounter", "Int64P", count)
+	changeCounter.Push(count)
+	; キー変化なく1.05秒たったら表示
+	SetTimer, OutputTimer, -1050
 	Return
 
 #MaxThreadsPerHotkey 1	; 元に戻す
