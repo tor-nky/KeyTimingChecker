@@ -58,7 +58,7 @@ RegRead, keyDriver, HKEY_LOCAL_MACHINE, SYSTEM\CurrentControlSet\Services\i8042p
 
 	codeToStr := ["Esc", "1", "2", "3", "4", "5", "6", "7", "8", "9", "Ø", "-", "=", "BackSpace", "Tab"	; sc01-0F
 		, "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "[", "]", "Enter", "LCtrl", "A", "S"		; sc10-1F
-		, "D", "F", "G", "H", "J", "K", "L", ";", "'", "`", "LShift", "＼", "Z", "X", "C", "V"			; sc20-2F
+		, "D", "F", "G", "H", "J", "K", "L", ";", "'", "``", "LShift", "＼", "Z", "X", "C", "V"			; sc20-2F
 		, "B", "N", "M", ",", ".", "/", , "NumpadMult"													; sc30-37
 		, "LAlt", "Space", "CapsLock", "F1", "F2", "F3", "F4", "F5"										; sc38-3F
 		, "F6", "F7", "F8", "F9", "F10", "Pause", "ScrollLock"]											; sc40-46
