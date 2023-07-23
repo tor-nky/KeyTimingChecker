@@ -103,13 +103,19 @@ RegRead, keyDriver, HKEY_LOCAL_MACHINE, SYSTEM\CurrentControlSet\Services\i8042p
 ; 起動
 ; ----------------------------------------------------------------------
 
-	Run, Notepad.exe, , , pid	; メモ帳を起動
-	Sleep, 500
-	WinActivate, ahk_pid %pid%	; アクティブ化
 	If (A_IsCompiled)
 	{
 		; 実行ファイル化されたスクリプトの場合は終了
-		Send, 実行ファイル化されているので終了します。
+		MsgBox, , , 実行ファイル化されているので終了します。
+		ExitApp
+	}
+	Run, Notepad.exe	; メモ帳を起動
+	Sleep, 1000
+	WinGet, hwnd, ID, A
+	WinGet, process, ProcessName, ahk_id %hwnd%
+	If (process != "Notepad.exe")
+	{
+		MsgBox, , , メモ帳を開くのに失敗しました。`n再度、実行してください。
 		ExitApp
 	}
 	clipSaved := ClipboardAll	; クリップボードの全内容を保存
@@ -156,7 +162,7 @@ OutputTimer:
 
 Output()	; () -> Double?
 {
-	global pid, changedKeys, changeCounter, codeToStr
+	global hwnd, changedKeys, changeCounter, codeToStr
 	static coefficient := 1000.0 / QPCInit()	; Double型
 	static lastKeyTime := QPC()		; Double型
 ;	local keyName, preKeyName, postKeyName, lastPostKeyName	; String型
@@ -167,7 +173,7 @@ Output()	; () -> Double?
 ;		, pressingKeys				; [String]型
 
 	; 起動したメモ帳以外へは出力しないで終了
-	IfWinNotActive, ahk_pid %pid%
+	IfWinNotActive, ahk_id %hwnd%
 		ExitApp
 	; 「保存しますか?」などの表示窓には出力しないで終了
 	IfWinActive , ahk_class #32770
